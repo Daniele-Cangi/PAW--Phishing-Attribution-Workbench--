@@ -1,0 +1,29 @@
+# Dockerfile per il modulo di clicking crittografato
+FROM selenium/standalone-chrome:latest
+
+# Installazione strumenti crittografici
+RUN sudo apt-get update && sudo apt-get install -y \
+    openssl \
+    gnupg2 \
+    python3-pip \
+    cryptsetup \
+    && sudo rm -rf /var/lib/apt/lists/*
+
+# Configurazione ambiente Python
+WORKDIR /app
+COPY requirements.txt .
+RUN pip3 install -r requirements.txt
+
+# Creazione volume crittografato
+RUN sudo mkdir -p /encrypted_storage
+VOLUME /encrypted_storage
+
+# Script di inizializzazione crittografia
+COPY init_crypto.sh .
+RUN chmod +x init_crypto.sh
+
+# Copia moduli Python
+COPY encrypted_clicker.py .
+COPY paw_integration.py .
+
+CMD ["./init_crypto.sh"]

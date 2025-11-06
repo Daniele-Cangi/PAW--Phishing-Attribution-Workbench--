@@ -1,0 +1,5 @@
+Subject: Test phishing
+From: attacker@example.com
+To: victim@example.com
+
+Click here: http://malicious.com/payload.exe

@@ -1,0 +1,9 @@
+{
+  "exec.summary.title": "Attribution Summary",
+  "exec.summary.origin": "Origin",
+  "exec.summary.domain": "Domain Lifecycle",
+  "exec.actions.recommend": "Recommended Actions",
+  "tech.section.received": "Received Path Normalization",
+  "tech.section.auth": "Authentication Alignment",
+  "abuse.subject": "[Abuse][Phishing] Case {id} \u2013 Origin {ip}/{asn} \u2013 Domain {domain}"
+}

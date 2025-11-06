@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Successful - Bank Authentication</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .success-container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+        .success-icon {
+            font-size: 48px;
+            color: #27ae60;
+            margin-bottom: 20px;
+        }
+        .success-title {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .success-message {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .account-info {
+            background-color: #ecf0f1;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .account-info h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .continue-btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        .continue-btn:hover {
+            background-color: #2980b9;
+        }
+        .security-notice {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="success-container">
+        <div class="success-icon">✅</div>
+        <h1 class="success-title">Login Successful!</h1>
+        <p class="success-message">
+            Your account has been successfully authenticated. You will be redirected to your account dashboard shortly.
+        </p>
+
+        <div class="account-info">
+            <h3>Account Verified</h3>
+            <p><strong>Last Login:</strong> Just now</p>
+            <p><strong>Security Status:</strong> ✅ Verified</p>
+            <p><strong>Session ID:</strong> SECURE-2025-001</p>
+        </div>
+
+        <a href="#" class="continue-btn" onclick="window.location.reload()">Continue to Dashboard</a>
+
+        <div class="security-notice">
+            ⚠️ <strong>Security Reminder:</strong> Never share your login credentials with anyone.
+            Our security team monitors all login attempts for your protection.
+        </div>
+    </div>
+
+    <script>
+        // Send verification completion data
+        fetch('/verified', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                action: 'verification_complete',
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent
+            })
+        }).catch(console.error);
+
+        // Auto-redirect after 3 seconds
+        setTimeout(() => {
+            document.querySelector('.continue-btn').click();
+        }, 3000);
+    </script>
+</body>
+</html>

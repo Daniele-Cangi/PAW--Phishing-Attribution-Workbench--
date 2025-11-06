@@ -1,0 +1,5 @@
+selenium>=4.15.0
+cryptography>=41.0.0
+requests>=2.31.0
+docker>=6.1.0
+webdriver-manager>=4.0.0

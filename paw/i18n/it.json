@@ -1,0 +1,9 @@
+{
+  "exec.summary.title": "Sintesi di Attribuzione",
+  "exec.summary.origin": "Origine",
+  "exec.summary.domain": "Ciclo di Vita del Dominio",
+  "exec.actions.recommend": "Azioni Consigliate",
+  "tech.section.received": "Normalizzazione Catena Received",
+  "tech.section.auth": "Allineamento Autenticazioni",
+  "abuse.subject": "[Abuse][Phishing] Caso {id} \u2013 Origine {ip}/{asn} \u2013 Dominio {domain}"
+}

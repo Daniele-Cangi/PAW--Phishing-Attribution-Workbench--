@@ -1,0 +1,684 @@
+{
+  "eml_parsed_headers": {
+    "from": "Assistenza Clienti Telepass <Telepass@nedrweqv-852484-170932.firebaseapp.com>",
+    "reply_to": "Telepass",
+    "return_path": "Telepass@nedrweqv-852484-170932.firebaseapp.com",
+    "message_id": "<0000000000001861ec0641d18252@google.com>",
+    "date": "Thu, 23 Oct 2025 11:12:26 +0000",
+    "subject": "Ultimo tentativo per dacangs@hotmail.it, il tuo kit di emergenza per auto GRATUITO ti aspetta...",
+    "auth_results": {
+      "spf": "pass",
+      "dkim": [],
+      "dmarc": "permerror"
+    },
+    "arc": {
+      "seals": [],
+      "message_signatures": [],
+      "auth_results": []
+    },
+    "received_spf": [
+      {
+        "result": "pass",
+        "helo": "mail-ot1-f72.google.com",
+        "client_ip": "209.85.210.72"
+      }
+    ],
+    "received": [
+      "from VI0P194MB2770.EURP194.PROD.OUTLOOK.COM (::1) by VI6PPF9F6C943AA.EURP194.PROD.OUTLOOK.COM with HTTPS; Thu, 23 Oct 2025 11:12:28 +0000",
+      "from AM8P251CA0016.EURP251.PROD.OUTLOOK.COM (2603:10a6:20b:21b::21) by VI0P194MB2770.EURP194.PROD.OUTLOOK.COM (2603:10a6:800:2b0::12) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9253.12; Thu, 23 Oct 2025 11:12:27 +0000",
+      "from AM3PEPF0000A797.eurprd04.prod.outlook.com (2603:10a6:20b:21b:cafe::39) by AM8P251CA0016.outlook.office365.com (2603:10a6:20b:21b::21) with Microsoft SMTP Server (version=TLS1_3, cipher=TLS_AES_256_GCM_SHA384) id 15.20.9253.13 via Frontend Transport; Thu, 23 Oct 2025 11:12:27 +0000",
+      "from mail-ot1-f72.google.com (209.85.210.72) by AM3PEPF0000A797.mail.protection.outlook.com (10.167.16.102) with Microsoft SMTP Server (version=TLS1_3, cipher=TLS_AES_256_GCM_SHA384) id 15.20.9253.7 via Frontend Transport; Thu, 23 Oct 2025 11:12:27 +0000",
+      "by mail-ot1-f72.google.com with SMTP id 46e09a7af769-7c29b319045so251391a34.2        for <dacangs@hotmail.it>; Thu, 23 Oct 2025 04:12:27 -0700 (PDT)"
+    ]
+  },
+  "found_urls": [
+    "https://images2.imgbox.com/fb/50/ypQTlXZI_o.png",
+    "http://bit.ly/48KklUc",
+    "https://images2.imgbox.com/a0/f7/eXpGEeNz_o.png",
+    "https://shorturl.at/BgZ31"
+  ],
+  "resolved_hosts": [
+    "www.forenett.com",
+    "shorturl.at",
+    "images2.imgbox.com"
+  ],
+  "hunts": {
+    "images2.imgbox.com": {
+      "target_domain": "images2.imgbox.com",
+      "real_ips": [
+        {
+          "ip": "212.63.223.225",
+          "technique": "direct_dns",
+          "confidence": "high"
+        },
+        {
+          "ip": "212.63.223.227",
+          "technique": "reverse_dns",
+          "confidence": "low"
+        },
+        {
+          "ip": "212.63.223.226",
+          "technique": "ttl_analysis",
+          "confidence": "low",
+          "ttl": 1,
+          "note": "Low TTL suggests temporary domain"
+        }
+      ],
+      "infrastructure": {
+        "primary_domain": "images2.imgbox.com",
+        "primary_ip": "212.63.223.225",
+        "total_ips_found": 3,
+        "related_domains": [],
+        "open_ports": [
+          22,
+          80,
+          443,
+          8080
+        ],
+        "techniques_applied": 3,
+        "advanced_analysis": {
+          "temporal_patterns": {
+            "dns_ttl": 1,
+            "ttl_category": "low",
+            "evasion_potential": "high"
+          },
+          "infrastructure_reuse": {
+            "ip_class": "C",
+            "is_cloud_provider": "unknown",
+            "reuse_potential": "medium"
+          },
+          "content_fingerprinting": {
+            "server_header": "unknown",
+            "content_type": "unknown",
+            "security_headers": []
+          },
+          "ttl_analysis": {}
+        }
+      },
+      "threat_intel": {
+        "threat_actor": "Unknown Cybercrime Group",
+        "confidence": 0.2,
+        "campaigns": [
+          "Generic Phishing"
+        ],
+        "risk_score": 20,
+        "campaign_type": "Generic Phishing"
+      },
+      "le_package": {
+        "executive_summary": "Target: images2.imgbox.com - Threat: Unknown Cybercrime Group",
+        "technical_evidence": {
+          "ips": [
+            "212.63.223.225",
+            "212.63.223.227",
+            "212.63.223.226"
+          ]
+        },
+        "investigation_notes": [
+          "Collected: 3 IPs"
+        ]
+      },
+      "infrastructure_clusters": {
+        "asn_clusters": {
+          "unknown": {
+            "ips": [
+              "212.63.223.225",
+              "212.63.223.227",
+              "212.63.223.226"
+            ],
+            "provider": "unknown"
+          }
+        },
+        "ip_range_clusters": {},
+        "cloud_provider_clusters": {},
+        "geographic_clusters": {}
+      },
+      "campaign_correlation": {
+        "similar_domains": [],
+        "shared_infrastructure": [],
+        "temporal_patterns": {},
+        "technique_patterns": []
+      },
+      "operational_fingerprints": {
+        "server_configuration": {
+          "server_header": "",
+          "server_type": "unknown",
+          "uniqueness_score": 0.3,
+          "version_pattern": "unknown",
+          "all_response_headers": {
+            "Cache-Control": "no-cache",
+            "Connection": "close",
+            "Content-Type": "text/html"
+          }
+        },
+        "http_headers_pattern": {
+          "security_headers": [],
+          "custom_headers": [],
+          "has_cookies": false,
+          "fingerprint_score": 0.0
+        },
+        "dns_patterns": {
+          "dns_records": {
+            "A": [
+              "212.63.223.226",
+              "212.63.223.225",
+              "212.63.223.227"
+            ],
+            "AAAA": [],
+            "MX": [],
+            "TXT": [],
+            "NS": [],
+            "CNAME": [],
+            "SOA": [],
+            "SRV": [],
+            "PTR": []
+          },
+          "ttl_analysis_error": "Failed to analyze TTL",
+          "reverse_dns": {
+            "212.63.223.226": "No PTR record",
+            "212.63.223.225": "No PTR record",
+            "212.63.223.227": "No PTR record"
+          },
+          "dnssec_enabled": false
+        },
+        "ssl_patterns": {
+          "has_certificate": false
+        },
+        "content_patterns": {
+          "error": "All HTTP requests failed",
+          "error_type": "connection_failed",
+          "attempted_methods": [
+            "successful_method",
+            "final_url",
+            "status_code"
+          ]
+        },
+        "network_behavior": {
+          "tcp_connection_time": 0.042,
+          "http_banner": "HTTP/1.0 403 Forbidden\r\nCache-Control: no-cache\r\nConnection: close\r\nContent-Type: text/html\r\n\r\n<html><body><h1>403 Forbidden</h1>\nRequest forbidden by administrative rules.\n</body></html>\n\n",
+          "banner_response_time": 0.047,
+          "http_status_line": "HTTP/1.0 403 Forbidden",
+          "server_header_raw": "",
+          "ssl_cipher": "('TLS_AES_256_GCM_SHA384', 'TLSv1.3', 256)",
+          "ssl_version": "TLSv1.3",
+          "ssl_has_certificate": true,
+          "open_ports": [
+            22,
+            80,
+            443
+          ],
+          "ports_scanned": 10
+        },
+        "behavioral_patterns": {
+          "current_utc_hour": 15,
+          "current_day": "Wednesday",
+          "activity_pattern": "business_hours",
+          "activity_score": 0.8,
+          "domain_complexity": {
+            "length": 18,
+            "vowel_ratio": 0.333,
+            "digit_ratio": 0.056,
+            "special_char_ratio": 0.111,
+            "entropy_score": 3.461,
+            "is_suspicious_length": false
+          },
+          "suspicious_domain_patterns": []
+        },
+        "composite_fingerprint": {
+          "hash": "845fd84f2caadd8fcd3862c27ffcd60f4ed4996d785d4bc6718e9dcb3352929f",
+          "components": 7,
+          "uniqueness_score": 0.03
+        }
+      },
+      "timestamp": "2025-10-29T15:11:03.594511",
+      "techniques_used": [
+        "ttl_analysis",
+        "direct_dns",
+        "reverse_dns"
+      ]
+    },
+    "shorturl.at": {
+      "target_domain": "shorturl.at",
+      "real_ips": [
+        {
+          "ip": "104.26.8.129",
+          "technique": "direct_dns",
+          "confidence": "high"
+        },
+        {
+          "ip": "64.20.54.34",
+          "technique": "dns_mx",
+          "confidence": "medium",
+          "source": "mail.shorturl.at"
+        },
+        {
+          "ip": "104.26.9.129",
+          "technique": "reverse_dns",
+          "confidence": "low"
+        },
+        {
+          "ip": "172.67.69.88",
+          "technique": "ttl_analysis",
+          "confidence": "low",
+          "ttl": 1,
+          "note": "Low TTL suggests temporary domain"
+        }
+      ],
+      "infrastructure": {
+        "primary_domain": "shorturl.at",
+        "primary_ip": "104.26.8.129",
+        "total_ips_found": 4,
+        "related_domains": [],
+        "open_ports": [
+          80,
+          443,
+          8080,
+          8443
+        ],
+        "techniques_applied": 4,
+        "advanced_analysis": {
+          "temporal_patterns": {
+            "dns_ttl": 1,
+            "ttl_category": "low",
+            "evasion_potential": "high"
+          },
+          "infrastructure_reuse": {
+            "ip_class": "A",
+            "is_cloud_provider": "unknown",
+            "reuse_potential": "medium"
+          },
+          "content_fingerprinting": {
+            "server_header": "cloudflare",
+            "content_type": "text/html; charset=UTF-8",
+            "security_headers": [
+              "x-content-type-options",
+              "x-frame-options"
+            ]
+          },
+          "ttl_analysis": {}
+        }
+      },
+      "threat_intel": {
+        "threat_actor": "Unknown Cybercrime Group",
+        "confidence": 0.2,
+        "campaigns": [
+          "Generic Phishing"
+        ],
+        "risk_score": 20,
+        "campaign_type": "Generic Phishing"
+      },
+      "le_package": {
+        "executive_summary": "Target: shorturl.at - Threat: Unknown Cybercrime Group",
+        "technical_evidence": {
+          "ips": [
+            "104.26.8.129",
+            "64.20.54.34",
+            "104.26.9.129",
+            "172.67.69.88"
+          ]
+        },
+        "investigation_notes": [
+          "Collected: 4 IPs"
+        ]
+      },
+      "infrastructure_clusters": {
+        "asn_clusters": {
+          "unknown": {
+            "ips": [
+              "104.26.8.129",
+              "64.20.54.34",
+              "104.26.9.129",
+              "172.67.69.88"
+            ],
+            "provider": "unknown"
+          }
+        },
+        "ip_range_clusters": {},
+        "cloud_provider_clusters": {},
+        "geographic_clusters": {}
+      },
+      "campaign_correlation": {
+        "similar_domains": [],
+        "shared_infrastructure": [],
+        "temporal_patterns": {},
+        "technique_patterns": []
+      },
+      "operational_fingerprints": {
+        "server_configuration": {
+          "server_header": "cloudflare",
+          "server_type": "unknown",
+          "uniqueness_score": 0.3,
+          "version_pattern": "unknown",
+          "all_response_headers": {
+            "Date": "Wed, 29 Oct 2025 14:11:29 GMT",
+            "Content-Type": "text/html",
+            "Content-Length": "167",
+            "Connection": "keep-alive",
+            "Cache-Control": "max-age=3600",
+            "Expires": "Wed, 29 Oct 2025 15:11:29 GMT",
+            "Location": "https://shorturl.at/",
+            "Report-To": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=d444Myk2ppCs%2FetSQYl0oI1SHeKD83s53xcKHeGysa8VAhxCRqQI%2BEIF2Qb6rOZnb4q0g3p4JscXyO8S2CBaR2sl6RN24fCrcILsXCBd9h0rVJHpb81IhpL9RyRekRPaaMjfaSAyBHO7\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+            "NEL": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+            "Vary": "Accept-Encoding",
+            "Server": "cloudflare",
+            "CF-RAY": "9963432bee94ca81-HAM",
+            "server-timing": "cfL4;desc=\"?proto=TCP&rtt=22459&min_rtt=22459&rtt_var=11229&sent=1&recv=3&lost=0&retrans=0&sent_bytes=0&recv_bytes=65&delivery_rate=0&cwnd=250&unsent_bytes=0&cid=0000000000000000&ts=0&x=0\""
+          }
+        },
+        "http_headers_pattern": {
+          "security_headers": [],
+          "custom_headers": [],
+          "has_cookies": false,
+          "fingerprint_score": 0.0
+        },
+        "dns_patterns": {
+          "dns_records": {
+            "A": [
+              "172.67.69.88",
+              "104.26.8.129",
+              "104.26.9.129"
+            ],
+            "AAAA": [
+              "2606:4700:20::681a:981",
+              "2606:4700:20::ac43:4558",
+              "2606:4700:20::681a:881"
+            ],
+            "MX": [
+              "0 mail.shorturl.at."
+            ],
+            "TXT": [
+              "\"ahrefs-site-verification_aa4f51688f2dfd5b08e15adc3accf6e45d325651bd2f74ca0637f2865e247b8c\"",
+              "\"v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6Fx9hNe/TB3KKopOar7v1N+jF2zmVkmMrayVbW2Za5aga2k1mRqIOWWKpFt6M4b/DLM/QwmJfBc2hImvqhiCVyymkrl4uL5+88MONeF0k3T8E/NB28nhVeRFbyxWgUmemtMqYTKUdZUGBMf0A/8vkl82CjHhmBRGC9Zua3OOT49VeGAzhdwmvB2Hl6TL1fEl+\" \"Qh/jj8sMMklrZSXgWLyaTn/lvfbB4fk1tTuiBmrYzW6MIwcX34J1nVBH8AftorbTLdxX2apj1LWbKX/QJrlzz9ogCo8QEWObvDeEwG8rOaGChSIr6wI+FYwq/nlP52QybtBoR5lHEn3jV/Jd8AMqwIDAQAB;\"",
+              "\"v=spf1 +a +mx +ip4:64.20.54.34 ~all\"",
+              "\"v=spf1 include:spf.zoho.com include:transmail.net ~all\""
+            ],
+            "NS": [
+              "jason.ns.cloudflare.com.",
+              "mia.ns.cloudflare.com."
+            ],
+            "CNAME": [],
+            "SOA": [
+              "jason.ns.cloudflare.com. dns.cloudflare.com. 2385753845 10000 2400 604800 1800"
+            ],
+            "SRV": [],
+            "PTR": []
+          },
+          "ttl_analysis_error": "Failed to analyze TTL",
+          "reverse_dns": {
+            "172.67.69.88": "No PTR record",
+            "104.26.8.129": "No PTR record",
+            "104.26.9.129": "No PTR record"
+          },
+          "dnssec_enabled": false
+        },
+        "ssl_patterns": {
+          "ssl_analysis_error": "[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] sslv3 alert handshake failure (_ssl.c:1028)"
+        },
+        "content_patterns": {
+          "error": "All HTTP requests failed",
+          "error_type": "connection_failed",
+          "attempted_methods": [
+            "successful_method",
+            "final_url",
+            "status_code"
+          ]
+        },
+        "network_behavior": {
+          "tcp_connection_time": 0.048,
+          "http_banner": "HTTP/1.1 409 Conflict\r\nDate: Wed, 29 Oct 2025 14:11:20 GMT\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Length: 16\r\nConnection: close\r\nX-Frame-Options: SAMEORIGIN\r\nReferrer-Policy: same-origin\r\nC",
+          "banner_response_time": 0.082,
+          "http_status_line": "HTTP/1.1 409 Conflict",
+          "server_header_raw": "cloudflare",
+          "ssl_error": "[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] sslv3 alert handshake failure (_ssl.c:1028)",
+          "ssl_has_certificate": false,
+          "open_ports": [
+            80,
+            443
+          ],
+          "ports_scanned": 10
+        },
+        "behavioral_patterns": {
+          "current_utc_hour": 15,
+          "current_day": "Wednesday",
+          "activity_pattern": "business_hours",
+          "activity_score": 0.8,
+          "domain_complexity": {
+            "length": 11,
+            "vowel_ratio": 0.273,
+            "digit_ratio": 0.0,
+            "special_char_ratio": 0.091,
+            "entropy_score": 3.096,
+            "is_suspicious_length": false
+          },
+          "suspicious_domain_patterns": [
+            "random_character_distribution"
+          ]
+        },
+        "composite_fingerprint": {
+          "hash": "7304427b36079b0f8848f3ea702bcb3b34ab861456b03bc0fd6db22bcea73365",
+          "components": 7,
+          "uniqueness_score": 0.05
+        }
+      },
+      "timestamp": "2025-10-29T15:11:29.313806",
+      "techniques_used": [
+        "ttl_analysis",
+        "direct_dns",
+        "dns_mx",
+        "reverse_dns"
+      ]
+    },
+    "www.forenett.com": {
+      "target_domain": "www.forenett.com",
+      "real_ips": [
+        {
+          "ip": "104.21.39.105",
+          "technique": "direct_dns",
+          "confidence": "high"
+        }
+      ],
+      "infrastructure": {
+        "primary_domain": "www.forenett.com",
+        "primary_ip": "104.21.39.105",
+        "total_ips_found": 1,
+        "related_domains": [],
+        "open_ports": [
+          80,
+          443,
+          8080,
+          8443
+        ],
+        "techniques_applied": 1,
+        "advanced_analysis": {
+          "temporal_patterns": {
+            "dns_ttl": 1,
+            "ttl_category": "low",
+            "evasion_potential": "high"
+          },
+          "infrastructure_reuse": {
+            "ip_class": "A",
+            "is_cloud_provider": "unknown",
+            "reuse_potential": "medium"
+          },
+          "content_fingerprinting": {
+            "server_header": "unknown",
+            "content_type": "unknown",
+            "security_headers": [
+              "x-eflow-request-id"
+            ]
+          },
+          "ttl_analysis": {}
+        }
+      },
+      "threat_intel": {
+        "threat_actor": "Unknown Cybercrime Group",
+        "confidence": 0.2,
+        "campaigns": [
+          "Generic Phishing"
+        ],
+        "risk_score": 20,
+        "campaign_type": "Generic Phishing"
+      },
+      "le_package": {
+        "executive_summary": "Target: www.forenett.com - Threat: Unknown Cybercrime Group",
+        "technical_evidence": {
+          "ips": [
+            "104.21.39.105"
+          ]
+        },
+        "investigation_notes": [
+          "Collected: 1 IPs"
+        ]
+      },
+      "infrastructure_clusters": {
+        "asn_clusters": {
+          "unknown": {
+            "ips": [
+              "104.21.39.105"
+            ],
+            "provider": "unknown"
+          }
+        },
+        "ip_range_clusters": {},
+        "cloud_provider_clusters": {},
+        "geographic_clusters": {}
+      },
+      "campaign_correlation": {
+        "similar_domains": [],
+        "shared_infrastructure": [],
+        "temporal_patterns": {},
+        "technique_patterns": []
+      },
+      "operational_fingerprints": {
+        "server_configuration": {
+          "server_header": "cloudflare",
+          "server_type": "unknown",
+          "uniqueness_score": 0.3,
+          "version_pattern": "unknown",
+          "all_response_headers": {
+            "Date": "Wed, 29 Oct 2025 14:12:00 GMT",
+            "Content-Length": "0",
+            "Connection": "keep-alive",
+            "location": "https://www.forenett.com/",
+            "cache-control": "no-cache",
+            "cf-cache-status": "DYNAMIC",
+            "Report-To": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=7DtmeatLgTs7ujt%2Fv0mq8mJAliXVFL2ZuDsmmeXYCFi7LWm6tzWFgYUXR480RdGzFSn4wmre%2B4WdF2Ue1nqwJ9kNfa%2FYfjP8zFXN3oxgHUzUVK6kJb0Kr1la\"}]}",
+            "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+            "Server": "cloudflare",
+            "CF-RAY": "996343ee5e2e62eb-HAM",
+            "alt-svc": "h3=\":443\"; ma=86400"
+          }
+        },
+        "http_headers_pattern": {
+          "security_headers": [],
+          "custom_headers": [],
+          "has_cookies": false,
+          "fingerprint_score": 0.0
+        },
+        "dns_patterns": {
+          "dns_records": {
+            "A": [
+              "104.21.39.105",
+              "172.67.144.121"
+            ],
+            "AAAA": [
+              "2606:4700:3036::ac43:9079",
+              "2606:4700:3033::6815:2769"
+            ],
+            "MX": [],
+            "TXT": [],
+            "NS": [],
+            "CNAME": [],
+            "SOA": [],
+            "SRV": [],
+            "PTR": []
+          },
+          "ttl_analysis_error": "Failed to analyze TTL",
+          "reverse_dns": {
+            "104.21.39.105": "No PTR record",
+            "172.67.144.121": "No PTR record"
+          },
+          "dnssec_enabled": false
+        },
+        "ssl_patterns": {
+          "ssl_analysis_error": "[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] sslv3 alert handshake failure (_ssl.c:1028)"
+        },
+        "content_patterns": {
+          "successful_method": "HEAD_http_80",
+          "final_url": "https://www.forenett.com/",
+          "status_code": 204,
+          "html_structure_hash": "d41d8cd98f00b204e9800998ecf8427e",
+          "html_length": 0,
+          "has_forms": false,
+          "has_scripts": false,
+          "js_patterns": [],
+          "obfuscation_indicators": [],
+          "suspicious_js_patterns": [],
+          "total_scripts": 0,
+          "css_references_hash": "d751713988987e93",
+          "css_count": 0,
+          "image_count": 0,
+          "external_resources": [],
+          "external_resources_count": 0,
+          "form_structures": [],
+          "forms_count": 0,
+          "phishing_indicators": [],
+          "page_title": "",
+          "meta_description": "",
+          "suspicious_content_words": [],
+          "cookie_analysis": {
+            "count": 1,
+            "names": [
+              "uniqueClick"
+            ],
+            "has_session_cookies": true
+          },
+          "security_headers": {},
+          "custom_headers": {
+            "x-eflow-request-id": "7cdc9843-caf0-420e-9618-d209e665b119",
+            "cf-cache-status": "DYNAMIC",
+            "CF-RAY": "996343b3cf64cad5-HAM"
+          },
+          "response_headers_count": 12
+        },
+        "network_behavior": {
+          "tcp_connection_time": 0.045,
+          "http_banner": "HTTP/1.1 409 Conflict\r\nDate: Wed, 29 Oct 2025 14:11:51 GMT\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Length: 16\r\nConnection: close\r\nX-Frame-Options: SAMEORIGIN\r\nReferrer-Policy: same-origin\r\nC",
+          "banner_response_time": 0.054,
+          "http_status_line": "HTTP/1.1 409 Conflict",
+          "server_header_raw": "cloudflare",
+          "ssl_error": "[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] sslv3 alert handshake failure (_ssl.c:1028)",
+          "ssl_has_certificate": false,
+          "open_ports": [
+            80,
+            443
+          ],
+          "ports_scanned": 10
+        },
+        "behavioral_patterns": {
+          "current_utc_hour": 15,
+          "current_day": "Wednesday",
+          "activity_pattern": "business_hours",
+          "activity_score": 0.8,
+          "domain_complexity": {
+            "length": 16,
+            "vowel_ratio": 0.25,
+            "digit_ratio": 0.0,
+            "special_char_ratio": 0.125,
+            "entropy_score": 3.203,
+            "is_suspicious_length": false
+          },
+          "suspicious_domain_patterns": []
+        },
+        "composite_fingerprint": {
+          "hash": "f1f25ef48fd8f365713487b1c435f9cb26bd1db17ef4f5b812af901075a65f25",
+          "components": 7,
+          "uniqueness_score": 0.03
+        }
+      },
+      "timestamp": "2025-10-29T15:12:01.148237",
+      "techniques_used": [
+        "direct_dns"
+      ]
+    }
+  }
+}
