@@ -121,6 +121,7 @@ class FormAnalyzer:
                       'total_attribute_count': 0, 'omitted_attribute_count': 0,
                       'total_observation_count': 0, 'omitted_observation_count': 0,
                       'total_context_node_count': 0, 'omitted_context_node_count': 0,
+                      'omitted_base_node_count': 0, 'omitted_base_href_count': 0,
                       'limited_value_count': 0, 'issues': []}}
         parser = _Forms(self, result)
         if url is not None:
@@ -168,6 +169,7 @@ class FormAnalyzer:
 class _Forms(HTMLParser):
     CONTROLS = {'input', 'select', 'textarea', 'button'}
     INERT = {'script', 'style', 'title', 'textarea'}
+    DECLARATIONS = {'action', 'method', 'src', 'href'}
 
     def __init__(self, analyzer, result):
         super().__init__(convert_charrefs=True)
@@ -189,14 +191,19 @@ class _Forms(HTMLParser):
 
     def attributes(self, attrs):
         rows = []
+        omitted_declarations = set()
         self.result['coverage']['total_attribute_count'] += len(attrs)
         for index, (name, value) in enumerate(attrs):
             if self.attribute_count >= self.limits.attributes:
                 self.result['coverage']['omitted_attribute_count'] += 1
+                if name in self.DECLARATIONS:
+                    omitted_declarations.add(name)
                 self.issue('attribute_count_limit')
                 continue
             self.attribute_count += 1
             row = {'index': index, 'name': name, 'value': value,
+                   'name_complete': len(name) <= self.limits.value_chars,
+                   'declaration_name': name if name in self.DECLARATIONS else None,
                    'status': 'observed', 'representation': 'HTML parser attribute; character references decoded'}
             if len(name) > self.limits.value_chars or (value is not None and len(value) > self.limits.value_chars):
                 self.result['coverage']['limited_value_count'] += 1
@@ -207,17 +214,19 @@ class _Forms(HTMLParser):
                                value_sha256=hashlib.sha256(value.encode('utf-8')).hexdigest())
                 self.issue('attribute_value_limit')
             rows.append(row)
-        return rows, len(rows) == len(attrs) and all(r['status'] == 'observed' for r in rows)
+        return rows, len(rows) == len(attrs) and all(r['status'] == 'observed' for r in rows), sorted(omitted_declarations)
 
     @staticmethod
     def declared(node, name):
-        rows = [r for r in node['attributes'] if r['name'] == name]
-        if not node['attributes_complete']:
-            return {'status': 'not_interpreted_limited_attributes', 'value': None}
+        rows = [r for r in node['attributes'] if r['declaration_name'] == name]
+        if name in node['omitted_declaration_names']:
+            return {'status': 'not_interpreted_omitted_declaration', 'value': None}
         if len(rows) > 1:
             return {'status': 'not_interpreted_duplicate_attributes', 'value': None}
         if not rows:
             return {'status': 'not_declared', 'value': None}
+        if rows[0]['status'] != 'observed':
+            return {'status': 'not_interpreted_limited_declaration', 'value': None}
         return {'status': 'declared', 'value': rows[0]['value']}
 
     def observe(self, **row):
@@ -231,10 +240,12 @@ class _Forms(HTMLParser):
         return {'verified': False, 'interpretation_status': 'lexical_observation', **row}
 
     def node(self, tag, attrs):
-        rows, complete = self.attributes(attrs)
+        rows, complete, omitted_declarations = self.attributes(attrs)
         return {'tag': tag, 'tag_index': self.tag_index,
                 'line': self.getpos()[0], 'column': self.getpos()[1],
-                'attributes': rows, 'attributes_complete': complete}
+                'attributes': rows, 'attributes_complete': complete,
+                'omitted_attribute_count': len(attrs) - len(rows),
+                'omitted_declaration_names': omitted_declarations}
 
     def handle_starttag(self, tag, attrs):
         self.tag_index += 1
@@ -281,6 +292,10 @@ class _Forms(HTMLParser):
             coverage['total_context_node_count'] += 1
             if self.context_count >= self.limits.context_nodes:
                 coverage['omitted_context_node_count'] += 1
+                if tag == 'base':
+                    coverage['omitted_base_node_count'] += 1
+                    if any(name == 'href' for name, _value in attrs):
+                        coverage['omitted_base_href_count'] += 1
                 self.issue('context_node_count_limit')
                 if tag == 'script': self.inert = tag
                 return
@@ -361,8 +376,8 @@ class _Forms(HTMLParser):
                 selected = True
                 node['selected_candidate_context'] = True
                 base = node['href_resolution']['candidate']
-        # Omitted contexts may contain a first base declaration. Do not infer its absence.
-        if not selected and self.result['coverage']['omitted_context_node_count']:
+        # Only an omitted href-bearing base can hide the first join context.
+        if not selected and self.result['coverage']['omitted_base_href_count']:
             base = None
         self.result['resolution_context'] = {'value': base, 'verified': False,
             'selected_base_tag_index': next((n['tag_index'] for n in self.result['base_observations']

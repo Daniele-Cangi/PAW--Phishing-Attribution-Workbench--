@@ -207,12 +207,14 @@ class FormObservationContracts(unittest.TestCase):
         self.assertEqual(result['coverage']['omitted_control_count'], 2)
         self.assertEqual(len(result['forms'][0]['inputs']), 2)
 
-    def test_attribute_budget_prevents_any_declaration_from_partial_node(self):
+    def test_attribute_budget_only_blocks_the_omitted_declaration(self):
         result = self.analyze('<form action="pay" method="post"><input name="email"></form>', attributes=1)
         self.assertEqual(result['coverage']['total_attribute_count'], 3)
         self.assertEqual(result['coverage']['omitted_attribute_count'], 2)
-        self.assertEqual(result['forms'][0]['action_declaration']['status'], 'not_interpreted_limited_attributes')
-        self.assertIsNone(result['forms'][0]['action_resolution']['candidate'])
+        self.assertEqual(result['forms'][0]['action_declaration']['status'], 'declared')
+        self.assertEqual(result['forms'][0]['action_resolution']['candidate'], 'https://example.invalid/dir/pay')
+        self.assertEqual(result['forms'][0]['method_declaration']['status'], 'not_interpreted_omitted_declaration')
+        self.assertEqual(result['forms'][0]['omitted_declaration_names'], ['method'])
 
     def test_limited_values_keep_hashes_but_cannot_create_hints_or_targets(self):
         value = 'email' * 10
@@ -234,6 +236,105 @@ class FormObservationContracts(unittest.TestCase):
         result = self.analyze('<base>' * 1000, context_nodes=2)
         self.assertEqual(len(result['base_observations']), 2)
         self.assertEqual(result['coverage']['omitted_context_node_count'], 998)
+
+    def test_unrelated_long_attribute_preserves_action_and_method(self):
+        html = '<form action="pay" method="post" data-note="' + 'x' * 4097 + '"></form>'
+        result = self.analyze(html)
+        form, = result['forms']
+        self.assertFalse(form['attributes_complete'])
+        self.assertEqual(form['action'], 'pay')
+        self.assertEqual(form['method'], 'post')
+        self.assertEqual(form['action_resolution']['candidate'], 'https://example.invalid/dir/pay')
+        self.assertEqual(result['status'], 'partial')
+        self.assertEqual(form['attributes'][2]['value_sha256'], hashlib.sha256(('x' * 4097).encode()).hexdigest())
+
+    def test_unrelated_long_base_attribute_does_not_create_href(self):
+        result = self.analyze('<base target="' + 'x' * 4097 + '"><base href="/new/"><form action="pay"></form>')
+        self.assertEqual(result['base_observations'][0]['href_declaration']['status'], 'not_declared')
+        self.assertEqual([n['selected_candidate_context'] for n in result['base_observations']], [False, True])
+        self.assertEqual(result['forms'][0]['action_resolution']['candidate'], 'https://example.invalid/new/pay')
+
+    def test_unrelated_long_attribute_preserves_declared_base_and_script_src(self):
+        long = 'x' * 4097
+        result = self.analyze(f'<base href="/new/" target="{long}"><script src="https://js.stripe.com/x" data-note="{long}"></script><form action="pay"></form>')
+        self.assertEqual(result['forms'][0]['action_resolution']['candidate'], 'https://example.invalid/new/pay')
+        self.assertEqual(result['script_observations'][0]['src_declaration']['status'], 'declared')
+        self.assertEqual(len([n for n in result['processor_observations'] if n['context'] == 'script_hostname_literal']), 1)
+        self.assertTrue(all(n['verified'] is False for n in result['processor_observations']))
+
+    def test_long_matching_declaration_is_uninterpreted_without_losing_other_declaration(self):
+        long = 'x' * 4097
+        result = self.analyze(f'<form action="{long}" method="post"></form><base href="{long}"><base href="/valid/"><script src="{long}"></script>')
+        form, = result['forms']
+        self.assertEqual(form['action_declaration']['status'], 'not_interpreted_limited_declaration')
+        self.assertEqual(form['method'], 'post')
+        self.assertIsNone(form['action_resolution']['candidate'])
+        self.assertTrue(result['base_observations'][0]['selected_candidate_context'])
+        self.assertFalse(result['base_observations'][1]['selected_candidate_context'])
+        self.assertIsNone(result['resolution_context']['value'])
+        self.assertEqual(result['script_observations'][0]['src_declaration']['status'], 'not_interpreted_limited_declaration')
+
+    def test_omitted_matching_duplicate_cannot_be_overlooked(self):
+        for name, html, collection, key in [
+            ('action', '<form action="pay" id="f" action="other"></form>', 'forms', 'action_declaration'),
+            ('href', '<base href="/new/" target="t" href="/other/"><form action="pay"></form>', 'base_observations', 'href_declaration'),
+            ('src', '<script src="https://js.stripe.com/x" id="s" src="https://other.invalid/x"></script>', 'script_observations', 'src_declaration')]:
+            with self.subTest(name=name):
+                result = self.analyze(html, attributes=2)
+                node = result[collection][0]
+                self.assertEqual(node['omitted_attribute_count'], 1)
+                self.assertEqual(node['omitted_declaration_names'], [name])
+                self.assertEqual(node[key]['status'], 'not_interpreted_omitted_declaration')
+                self.assertIsNone(node[key]['value'])
+
+    def test_omitted_unrelated_attributes_do_not_hide_declared_or_absent_href(self):
+        result = self.analyze('<base href="/new/" target="t"><form></form>', attributes=1)
+        base, = result['base_observations']
+        self.assertEqual(base['href_declaration']['status'], 'declared')
+        self.assertEqual(base['omitted_declaration_names'], [])
+        result = self.analyze('<base target="t"><form action="pay"></form>', attributes=1)
+        self.assertEqual(result['base_observations'][0]['href_declaration']['status'], 'not_declared')
+        self.assertEqual(result['forms'][0]['action_declaration']['status'], 'not_interpreted_omitted_declaration')
+
+    def test_limited_name_preview_does_not_become_a_declaration(self):
+        result = self.analyze('<form actionXXXX="evil" action="pay"></form>', None, value_chars=6)
+        form, = result['forms']
+        self.assertEqual(form['attributes'][0]['name'], 'action')
+        self.assertFalse(form['attributes'][0]['name_complete'])
+        self.assertIsNone(form['attributes'][0]['declaration_name'])
+        self.assertEqual(form['action'], 'pay')
+
+    def test_real_declaration_with_limited_name_is_not_misreported_absent(self):
+        result = self.analyze('<base href="x"><base href="y">', None, value_chars=2)
+        self.assertEqual(result['base_observations'][0]['href_declaration']['status'], 'not_interpreted_limited_declaration')
+        self.assertTrue(result['base_observations'][0]['selected_candidate_context'])
+        self.assertFalse(result['base_observations'][1]['selected_candidate_context'])
+
+    def test_omitted_scripts_keep_page_context_for_relative_action(self):
+        result = self.analyze('<script></script><script></script><form action="pay"></form>', context_nodes=1)
+        self.assertEqual(result['coverage']['omitted_context_node_count'], 1)
+        self.assertEqual(result['coverage']['omitted_base_node_count'], 0)
+        self.assertEqual(result['coverage']['omitted_base_href_count'], 0)
+        self.assertEqual(result['forms'][0]['action_resolution']['candidate'], 'https://example.invalid/dir/pay')
+        self.assertEqual(result['status'], 'partial')
+
+    def test_omitted_href_less_bases_keep_page_context_for_relative_action(self):
+        result = self.analyze('<base><base><form action="pay"></form>', context_nodes=1)
+        self.assertEqual(result['coverage']['omitted_base_node_count'], 1)
+        self.assertEqual(result['coverage']['omitted_base_href_count'], 0)
+        self.assertEqual(result['forms'][0]['action_resolution']['candidate'], 'https://example.invalid/dir/pay')
+
+    def test_omitted_href_bearing_base_still_blocks_page_fallback(self):
+        for attribute in ('href="/other/"', 'href', 'href="/one/" href="/two/"'):
+            with self.subTest(attribute=attribute):
+                result = self.analyze(f'<script></script><base {attribute}><form action="pay"></form>', context_nodes=1)
+                self.assertEqual(result['coverage']['omitted_base_href_count'], 1)
+                self.assertIsNone(result['forms'][0]['action_resolution']['candidate'])
+
+    def test_later_omitted_base_cannot_replace_retained_first_href(self):
+        result = self.analyze('<base href="/first/"><base href="/other/"><form action="pay"></form>', context_nodes=1)
+        self.assertEqual(result['coverage']['omitted_base_href_count'], 1)
+        self.assertEqual(result['forms'][0]['action_resolution']['candidate'], 'https://example.invalid/first/pay')
 
     def test_observation_budget_is_shared_across_fields_and_processor_tokens(self):
         result = self.analyze('<form><input name="email_amount"></form> stripe stripe', observations=1)

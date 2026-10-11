@@ -29,14 +29,23 @@ contents and template contents cannot introduce form/control occurrences.
 Self-closing tags follow `HTMLParser` callbacks, not browser parsing rules.
 
 Action/method/src/href declarations distinguish absent, bare, duplicate and
-limited attributes. Duplicate or incomplete declarations are not selected.
+limited attributes. A limited matching declaration or an omitted attribute of
+that declaration name is not selected; unrelated limited/omitted attributes do
+not invalidate a fully retained declaration. Nodes retain an omission count and
+a bounded set of omitted action/method/src/href names; limited name previews
+cannot introduce declarations. `attributes_complete` still describes the whole
+attribute inventory, independently of each declaration's interpretation.
 Method spelling is preserved without an inferred GET/POST default. The derived
 action candidate is separate from the declared action. `urllib.parse.urljoin`
 uses the supplied page URL and the first retained href-bearing base declaration;
 an ambiguous or unusable first declaration prevents fallback to a later base or
 the page URL. Empty declared actions/hrefs can join to a supplied page context;
-absent/bare values cannot. Omitted contexts prevent assuming that no base was
-declared. Absolute actions can still yield candidates without a base.
+absent/bare values cannot. An omitted href-bearing base prevents assuming that
+no base context was declared; coverage distinguishes omitted base nodes and
+href-bearing base nodes from the combined context omission count. Omitted
+scripts or href-less bases do not erase the page context. A later omitted base
+cannot replace a retained first href-bearing base. Absolute actions can still
+yield candidates without a base.
 Only HTTP(S) candidates with a parsed hostname/port and no ASCII whitespace or
 control characters are retained. This is a conservative string interpretation,
 not browser navigation, URL safety or endpoint validation. `resolution_context`
@@ -101,7 +110,7 @@ caller. Its separate `paw/deobfuscate/html.py` form inventory is unchanged and
 has independent actual CLI regression checks. The Python policy is not OS
 isolation; controlled egress remains deferred.
 
-The recorded local Windows/Python 3.13 check for this correction passed 31 form
+The recorded local Windows/Python 3.13 check for PR41 passed 31 form
 contracts and the general suite (568 tests, 560 pass, eight platform exclusions).
 The actual shared CLI/API ownership/read/verify/export and supervisor-crash
 recovery check passed, as did five actual `full --no-egress` HTML worker cases.
@@ -110,3 +119,13 @@ Python files byte for byte. This is not a new clean dependency installation or
 a repeated private-corpus/classification evaluation. The source audit found
 only this helper and its version-2 matrix consumer changed among those 90 files;
 all original processor/field registry patterns were preserved.
+
+The follow-up to PR41's two P2 findings narrows limitation effects to the affected
+declaration and omitted href-bearing base contexts. It passed 43 focused form
+contracts and the general suite (580 tests, 572 pass, eight platform exclusions)
+on Windows/Python 3.13, including actual static helper/matrix/atomic JSON/seal/ZIP
+execution under offline policy. The rebuilt wheel matches metadata/entry points
+and all 90 current Python files. Only the form helper changes among those package
+files; matrix, active runner and offline worker paths stay unchanged. The earlier
+CLI/API, five HTML workers and private-corpus records are previous evidence,
+not new active-collection or classification results for this follow-up.
