@@ -42,7 +42,7 @@ checked against both the baseline and the proposed fix before changing code.
 | S06 | [Attachment ZIP inventories](attachment-archive-inventory.md), attachment payload hashes and separate original embedded spans tested. ZIP membership inventory does not unpack contents. | Required local attachment coverage must be explicit for opaque/encrypted/non-ZIP formats, executable/macro/AV claims and nested archives. Preserve originals and omissions; no execution. Actual attachment corpus is absent from the private 20-email pilot, so fixture checks do not establish real-world coverage. |
 | S07 | [Content assessment](content-assessment.md), [score explanations](score-explanations.md), domain Unicode/brand/TLD/age and RDAP binding contracts. Numerical contributions and unrounded decisions checked; classifier is uncalibrated. | Combined evidence-to-contribution audit, missing-input behavior and explanation parity. Independent labeled evaluation in S10; matching a rule or passing arithmetic tests cannot validate a risk threshold. Live domain/provider checks remain S14. |
 | S08 | Integrity, stopped-case query admission, legacy index observation, ZIP/API/report exposure and [SimHash](header-simhash.md) contracts. STIX unavailable; abuse outputs are unsent local drafts. | Audit every final report/diagram/export for traceable sources, unsupported origin/risk claims and malformed-input readability. PGP signing verification and Rekor inclusion authenticity are not established by existing seal checks. Schema-conformant STIX/ARF/X-ARF requires an independent contract; unavailable status can close the present boundary. |
-| S09 | Trace orchestration has actual worker evidence. Separate form, tracker, header-forgery and phishing-kit helpers are present, not comprehensively validated. AST finds two top-level `analyze_kit_patterns` definitions; the later definition overrides the first. | **Next focused audit:** establish reachable consumers, actual inputs, observation sources, budgets and interpretation claims for each helper. Reproduce problems before fixing. Duplicate definition alone is not a failure proof. Do not declare dynamic kit behavior, malware family, C2/exfiltration, forgery or low risk from unsupported static matches/absence. Keep active collection in S14. |
+| S09 | Trace orchestration has actual worker evidence. [Static captured-kit observations](kit-static-evidence.md) repair the collector scalar/list mismatch and unsupported HTTP/POST defaults, with bounded source provenance and unavailable interpretation. Separate form, tracker and header-forgery helpers remain open. | Next: establish supported consumers/inputs and source/interpretation boundaries for the remaining form/tracker/header-forgery helpers. Static capture ingestion is tested separately from active collection (S14). Do not infer dynamic kit behavior, malware family, C2/exfiltration, forgery or low risk from static strings or absence. |
 | S10 | Operator attribution has no sourced dataset; cross-case campaign correlation explicitly unavailable. SimHash algorithm is versioned, without calibrated similarity thresholds. Private pilot: 20 originals, 10 owner-confirmed legitimate, spam not independently adjudicated. | Independently label representative evidence and preserve a separate holdout; evaluate coverage and false positives/negatives for a defined task. Calibrate thresholds and correlation before enabling claims. All pilot decisions being Inconclusive proves neither accuracy nor coverage. No arbitrary project completion percentage. |
 | S11 | Local file-integrity monitoring has earlier actual tests. Sentinel database, intelligence/geographic reports and lifecycle commands are not comprehensively stabilized. | Offline audit of stored-observation provenance, database migration/read/write behavior and report/export fidelity. Geographic location, user agent, timing and IP similarity cannot alone establish attacker/victim identity. Network monitoring belongs to S14; no live target is needed for passive stored-data checks. |
 | S12 | 26 tracked operational **Python** scripts outside the package, listed below. `tools/analyze_inbox.py` has a [verified supervised offline launcher](legacy-inbox-launcher.md); `start_canary.py` has an actual unavailable-before-I/O rejection check in `integration_canary_boundary_real.py`. The other 24 lack a general entry-point validation record. Two additional shell launchers are registered separately: `deploy.sh` (S12/S13/S14) and `paw/modules/encrypted_clicking/init_crypto.sh` (S14). | Decide support or archival status for all 28 registered operational scripts, including the shell launchers; do not close the register with shell paths omitted. Supported local paths need admission, no-egress, bounds, honest outputs and source preservation. Shell deployment/privileged active paths remain deferred until their S13/S14 checks; Python presence or a package build does not validate them. |
@@ -120,30 +120,27 @@ Use a trusted source checkout and installed required dependencies. These
 commands run actual offline analyses/local loopback workers and a package build;
 they do not start Docker or visit sample URLs.
 
-## First remaining helper audit (S09)
+## Static kit correction (S09)
 
-Actual static helper calls on this baseline, inside `offline_policy`, used five
-constructed input shapes: empty, scalar/list HTML and scalar/list JavaScript.
-The HTML contains a normal form target at `https://example.invalid/login`; no
-target is fetched. Inputs were unchanged and there were no blocked operations.
+The initial audit on merged PR38 reproduced two failures in actual static
+helpers under no-egress: collector-shaped HTML lists lost a form target retained
+for the identical scalar, and empty sources generated HTTP/POST attacker defaults.
+A duplicate top-level pattern function was a separate reachability concern.
 
-Two findings are reproduced and remain **open**:
+The focused correction handles scalar/list HTML, JavaScript and CSS independently,
+retains source indexes and complete text hashes, and keeps malformed siblings and
+omissions visible. The captured-file reader binds complete raw hashes to paths,
+distinguishes replacement-decoded text, and enforces file/source/entry/depth and
+observation budgets. The actual publishing consumer retains static observations
+without turning their URLs into C2 infrastructure. Legacy risk/attribution remain
+explicitly unavailable. See [the exact contract and boundaries](kit-static-evidence.md).
 
-- `trace_one` builds `kit_content['html']` as a list. Passing that producer shape
-  to `analyze_phishing_kit_content` loses a form target retained when the identical
-  HTML is passed as a scalar. This establishes a static producer/consumer mismatch;
-  it does not establish a malicious endpoint or exercise the active collection.
-- Empty kit content produces `patterns.attacker_fingerprint.c2_protocol = 'http'`
-  and `exfiltration_method = 'post'` without corresponding source observations.
-  Those defaults cannot establish an attacker fingerprint or exfiltration.
-
-There are two `analyze_kit_patterns` definitions (baseline lines 1937 and 1993);
-the runtime uses the latter. This is a separate contract/reachability concern,
-not proof that removing or renaming one function fixes the two findings.
-The upcoming focused correction must check the complete scalar/list family,
-source provenance, malformed inputs and honest interpretation/availability,
-then check affected consumers. Existing risk/C2 labels are not classifier truth.
-This documentation change does not repair or enable those helpers.
+`tests/test_kit_static.py` checks actual functions, local constructed capture
+files and the publishing consumer, including local sealing/ZIP preservation.
+These fixtures are not remote collection or classification evidence. Full
+`--no-egress` worker regression exercises the unchanged inactive boundary, not
+this active caller. Form/tracker/header-forgery helpers remain open; S09 as a
+whole is not declared complete.
 
 ## Completion order
 
@@ -165,7 +162,7 @@ discarding available forensic observations or asserting unimplemented success.
 ## Source ownership index
 
 The following index accounts for every tracked package Python file at the
-baseline. Assignment denotes the family responsible for audit, not complete
+baseline, plus the focused kit module (90 current files). Assignment denotes the family responsible for audit, not complete
 verification of the file; mixed local/active functions keep both boundaries.
 
 - **S00 (11 files):** [paw/__init__.py](../paw/__init__.py), [paw/canary/__init__.py](../paw/canary/__init__.py), [paw/deobfuscate/__init__.py](../paw/deobfuscate/__init__.py), [paw/detonate/__init__.py](../paw/detonate/__init__.py), [paw/gui/__init__.py](../paw/gui/__init__.py), [paw/sentinel/__init__.py](../paw/sentinel/__init__.py), [paw/util/fsutil.py](../paw/util/fsutil.py), [paw/util/hashutil.py](../paw/util/hashutil.py), [paw/util/timeutil.py](../paw/util/timeutil.py), [paw/util/validators.py](../paw/util/validators.py), [paw/web/__init__.py](../paw/web/__init__.py).
@@ -177,7 +174,7 @@ verification of the file; mixed local/active functions keep both boundaries.
 - **S06 (1 file):** [paw/core/attach.py](../paw/core/attach.py).
 - **S07 (6 files):** [paw/core/domain_age.py](../paw/core/domain_age.py), [paw/core/domain_unicode.py](../paw/core/domain_unicode.py), [paw/core/ml_scorer.py](../paw/core/ml_scorer.py), [paw/core/profiler.py](../paw/core/profiler.py), [paw/core/rdap_registration.py](../paw/core/rdap_registration.py), [paw/core/scoring.py](../paw/core/scoring.py).
 - **S08 (9 files):** [paw/core/abuse.py](../paw/core/abuse.py), [paw/core/evidence.py](../paw/core/evidence.py), [paw/core/exporter.py](../paw/core/exporter.py), [paw/core/graphs.py](../paw/core/graphs.py), [paw/core/index.py](../paw/core/index.py), [paw/core/signature.py](../paw/core/signature.py), [paw/core/stix.py](../paw/core/stix.py), [paw/core/verify.py](../paw/core/verify.py), [paw/web/api.py](../paw/web/api.py).
-- **S09 (4 files):** [paw/core/form_analysis.py](../paw/core/form_analysis.py), [paw/core/header_forgery.py](../paw/core/header_forgery.py), [paw/core/trace.py](../paw/core/trace.py), [paw/core/trackers.py](../paw/core/trackers.py).
+- **S09 (5 files):** [paw/core/kit_static.py](../paw/core/kit_static.py), [paw/core/form_analysis.py](../paw/core/form_analysis.py), [paw/core/header_forgery.py](../paw/core/header_forgery.py), [paw/core/trace.py](../paw/core/trace.py), [paw/core/trackers.py](../paw/core/trackers.py).
 - **S10 (1 file):** [paw/core/attribution_matrix.py](../paw/core/attribution_matrix.py).
 - **S11 (5 files):** [paw/sentinel/config.py](../paw/sentinel/config.py), [paw/sentinel/database.py](../paw/sentinel/database.py), [paw/sentinel/file_monitor.py](../paw/sentinel/file_monitor.py), [paw/sentinel/geographic_reports.py](../paw/sentinel/geographic_reports.py), [paw/sentinel/intelligence_analyzer.py](../paw/sentinel/intelligence_analyzer.py).
 - **S14 (16 files):** [paw/config/proxy_config.py](../paw/config/proxy_config.py), [paw/core/dns_enrichment.py](../paw/core/dns_enrichment.py), [paw/core/ja3_fingerprinting.py](../paw/core/ja3_fingerprinting.py), [paw/core/redirect_chain.py](../paw/core/redirect_chain.py), [paw/core/rekor.py](../paw/core/rekor.py), [paw/core/tls_fingerprinting.py](../paw/core/tls_fingerprinting.py), [paw/detonate/runner.py](../paw/detonate/runner.py), [paw/intelligence/criminal_hunter.py](../paw/intelligence/criminal_hunter.py), [paw/intelligence/enrich_last_hunt.py](../paw/intelligence/enrich_last_hunt.py), [paw/intelligence/infrastructure_mapper.py](../paw/intelligence/infrastructure_mapper.py), [paw/intelligence/le_package.py](../paw/intelligence/le_package.py), [paw/intelligence/threat_intel.py](../paw/intelligence/threat_intel.py), [paw/modules/encrypted_clicking/encrypted_clicker.py](../paw/modules/encrypted_clicking/encrypted_clicker.py), [paw/modules/encrypted_clicking/paw_integration.py](../paw/modules/encrypted_clicking/paw_integration.py), [paw/sentinel/ip_analyzer.py](../paw/sentinel/ip_analyzer.py), [paw/sentinel/monitor.py](../paw/sentinel/monitor.py).
@@ -222,7 +219,7 @@ separate evidence producers, not implicitly validated operational entry points.
 The tracked shell/PowerShell/batch extension census (`.sh`, `.bash`, `.bat`,
 `.cmd`, `.ps1`, `.psm1`, `.psd1`) finds these two launchers. Together with the
 26 external operational Python files, the register covers **28 operational
-scripts**; one shell launcher is inside the package directory. The 89-file
+scripts**; one shell launcher is inside the package directory. The 90-file current
 package source index above counts Python files only. No launcher was executed
 to produce this inventory.
 
