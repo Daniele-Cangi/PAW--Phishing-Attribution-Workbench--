@@ -6,6 +6,7 @@ import sqlite3
 from contextlib import contextmanager, closing
 import json
 import os
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from ..util.fsutil import ensure_dir
@@ -15,8 +16,14 @@ from ..util.timeutil import utc_now_iso
 class CampaignDatabase:
     """SQLite database for managing monitored phishing campaigns."""
 
-    def __init__(self, db_path: str = "sentinel.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = "sentinel.db", *, read_only: bool = False):
+        self.db_path = str(Path(db_path).resolve()) if read_only else db_path
+        self.read_only = read_only
+        if read_only:
+            # Admit existing saved storage without CREATE TABLE or migrations.
+            with self.connection() as conn:
+                conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchall()
+            return
         db_dir = os.path.dirname(db_path)
         if db_dir:  # Only create directory if there's a directory path
             ensure_dir(db_dir)
@@ -24,9 +31,26 @@ class CampaignDatabase:
 
     @contextmanager
     def connection(self):
-        with closing(sqlite3.connect(self.db_path)) as conn:
+        target = self._read_only_uri() if self.read_only else self.db_path
+        with closing(sqlite3.connect(target, uri=self.read_only)) as conn:
+            if self.read_only:
+                conn.execute("PRAGMA query_only = ON")
             with conn:
                 yield conn
+
+    def _read_only_uri(self) -> str:
+        """Admit a saved rollback-journal database, without creating sidecars."""
+        database = Path(self.db_path)
+        if not database.is_file():
+            raise FileNotFoundError(f"Sentinel database is not an existing file: {database}")
+        # SQLite read-only WAL opening may create/update shared-memory sidecars.
+        # Do not ignore a WAL or recover a pending journal to display stale data.
+        with database.open('rb') as source:
+            header = source.read(20)
+        if (header.startswith(b'SQLite format 3\x00') and 2 in header[18:20]) or any(
+                Path(str(database) + suffix).exists() for suffix in ('-wal', '-shm', '-journal')):
+            raise ValueError("Sentinel passive opening requires a stopped database without WAL/journal sidecars")
+        return database.as_uri() + '?mode=ro'
 
     def _init_db(self) -> None:
         """Initialize database tables."""
@@ -566,13 +590,17 @@ class CampaignDatabase:
                   'geolocation_data', 'whois_data', 'related_ips', 'metadata',
                   'created_at', 'updated_at', 'interaction_type', 'interaction_confidence', 'interaction_indicators']
 
-        victim = {column: row[column] for column in columns}
+        available = set(row.keys())
+        interaction_fields = {'interaction_type', 'interaction_confidence', 'interaction_indicators'}
+        victim = {column: (None if column in interaction_fields and column not in available else row[column])
+                  for column in columns}
 
         # Keep the existing general reader's JSON defaults consistent everywhere.
         for json_field in ('geolocation_data', 'whois_data', 'metadata', 'attacker_correlation'):
             victim[json_field] = self._safe_load_json(victim[json_field], {})
         for json_field in ('related_ips', 'interaction_indicators'):
-            victim[json_field] = self._safe_load_json(victim[json_field], [])
+            if json_field in available:
+                victim[json_field] = self._safe_load_json(victim[json_field], [])
 
         return victim
 
