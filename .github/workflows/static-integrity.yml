@@ -224,6 +224,9 @@ jobs:
       - name: Verify supplied tracker-pattern and log provenance, shared bounds and matrix consumption
         run: python -m unittest discover -s tests -p 'test_tracker_observations.py' -v
 
+      - name: Verify passive Received descriptions and unavailable header-forgery assessment
+        run: python -m unittest discover -s tests -p 'test_header_forgery_contracts.py' -v
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

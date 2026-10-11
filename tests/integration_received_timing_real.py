@@ -73,6 +73,12 @@ def main():
             assert anomalies['suspicious_relay_chain'] is None
             assert anomalies['timestamp_manipulation'] is None
             assert anomalies['impossible_negative_skew'] is None
+            assert anomalies['ip_fqdn_mismatch'] is None
+            assert anomalies['missing_auth_headers'] is None
+            assert anomalies['auth_failures'] == anomalies['spoofing_patterns'] == []
+            assert anomalies['verified'] is False
+            assert anomalies['forgery_assessment']['status'] == 'unavailable'
+            assert anomalies['forgery_assessment']['verified'] is False
             assert not {'suspicious_relay_chain','timestamp_manipulation'} & set(anomalies['spoofing_patterns'])
             assert len(timing['adjacent_pairs'])==max(0,len(dates)-1)
             assert coverage['stages']['received_timing']['status']==timing['status']
