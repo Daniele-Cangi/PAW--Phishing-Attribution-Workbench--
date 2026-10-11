@@ -133,6 +133,65 @@ class TrackerObservationContracts(unittest.TestCase):
                 self.assertTrue(all(r['verified'] is False for r in hosts))
                 self.assertEqual(result['network_trackers'], [])
 
+    def test_terminal_root_dot_matches_all_registry_domains_with_original_provenance(self):
+        before = len(violations())
+        with offline_policy():
+            for domain in TrackerExtractor.TRACKING_DOMAINS:
+                for prefix in ('', 'www.'):
+                    hostname = prefix + domain
+                    record = {'url': 'https://' + hostname.upper() + '.:443/x', 'extra': {'keep': 'é'}}
+                    with self.subTest(domain=domain, prefix=prefix):
+                        result = self.extractor().extract_from_network_logs([record])
+                        plain = self.extractor().extract_from_network_logs([{'url': 'https://' + hostname + '/x'}])
+                        matches = [r for r in result['observations'] if r['context'] == 'hostname_registry_match']
+                        self.assertEqual([r['registry_domain'] for r in matches],
+                            [r['registry_domain'] for r in plain['observations'] if r['context'] == 'hostname_registry_match'])
+                        self.assertTrue(matches)
+                        self.assertTrue(all(r['value'] == hostname + '.' for r in matches))
+                        self.assertTrue(all(r['comparison_hostname'] == hostname for r in matches))
+                        self.assertTrue(all(r['verified'] is False for r in matches))
+                        components = next(r for r in result['observations'] if r['context'] == 'url_components')
+                        self.assertEqual(components['hostname'], hostname + '.')
+                        self.assertEqual(components['value'], record['url'])
+                        source, = result['sources']
+                        self.assertEqual(source['supplied_record'], record)
+                        self.assertEqual(source['sha256'], hashlib.sha256(canonical(record)).hexdigest())
+                        self.assertEqual(source['bytes'], len(canonical(record)))
+                        summary = AttributionMatrix().generate_attribution_matrix({'trackers': result})['evidence_summary']['enrichment_sources']['trackers']
+                        self.assertEqual(summary['evidence_count'], len(result['observations']))
+                        self.assertEqual(summary['observation_counts']['registry_patterns'],
+                            sum(r['context'] in {'registry_pattern', 'hostname_registry_match'} for r in result['observations']))
+                        self.assertEqual(summary['sources'][0]['sha256'], source['sha256'])
+                        self.assertEqual(summary['confidence_level'], 'unavailable')
+                        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(len(violations()), before)
+
+    def test_root_dot_comparison_does_not_strip_multiple_dots_or_relax_host_boundaries(self):
+        for domain in TrackerExtractor.TRACKING_DOMAINS:
+            for url in ('https://' + domain + '../x', 'https://www.' + domain + '../x',
+                        'https://' + domain + '.evil.invalid./x', 'https://not' + domain + './x',
+                        'https://' + domain + '.@evil.invalid./x', 'https://evil.invalid./' + domain + '.',
+                        'https://evil.invalid./?host=' + domain + '.'):
+                with self.subTest(url=url):
+                    record = {'url': url}
+                    result = self.extractor().extract_from_network_logs([record])
+                    # notanalytics.tiktok.com is still a literal subdomain of
+                    # the separately registered parent tiktok.com.
+                    expected = ['tiktok.com'] if url == 'https://notanalytics.tiktok.com./x' else []
+                    self.assertEqual([r['registry_domain'] for r in result['observations']
+                                      if r['context'] == 'hostname_registry_match'], expected)
+                    self.assertEqual(result['sources'][0]['supplied_record'], record)
+                    self.assertEqual(result['sources'][0]['sha256'], hashlib.sha256(canonical(record)).hexdigest())
+
+    def test_registry_root_dot_comparison_keeps_referrer_hostname_equality_literal(self):
+        record = {'url': 'https://google-analytics.com./x', 'referer': 'https://google-analytics.com/'}
+        result = self.extractor().extract_from_network_logs([record])
+        comparison, = [r for r in result['observations'] if r['context'] == 'literal_hostname_comparison']
+        self.assertEqual(comparison['url_hostname'], 'google-analytics.com.')
+        self.assertEqual(comparison['referer_hostname'], 'google-analytics.com')
+        self.assertFalse(comparison['equal'])
+        self.assertEqual(result['third_party_domains'], [])
+
     def test_malformed_and_unsupported_urls_preserve_admitted_records(self):
         for url in ('https://[bad/x', 'https://example.invalid:wrong/x', 'javascript:x',
                     '/relative', '\thttps://example.invalid/x', 'https://evil.invalid\\@google-analytics.com/x', None, 123):

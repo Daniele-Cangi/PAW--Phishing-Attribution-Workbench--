@@ -283,10 +283,14 @@ class _Inventory:
             if parsed is None: continue
             self.emit(source, context='url_components', source_field='url', value=url,
                       hostname=parsed.hostname, path=parsed.path, query=parsed.query, fragment=parsed.fragment)
+            # DNS root-label spelling affects only the registry comparison.
+            comparison_hostname = parsed.hostname.removesuffix('.')
             for domain in self.extractor.TRACKING_DOMAINS:
-                if parsed.hostname == domain or parsed.hostname.endswith('.' + domain):
+                if comparison_hostname == domain or comparison_hostname.endswith('.' + domain):
                     self.emit(source, context='hostname_registry_match', source_field='url',
-                              value=parsed.hostname, registry_domain=domain)
+                              value=parsed.hostname, registry_domain=domain,
+                              comparison_hostname=comparison_hostname,
+                              comparison_method='remove exactly one terminal DNS root dot; exact or dot-delimited suffix')
             if parsed.path.lower().endswith(('.gif', '.png', '.jpg')):
                 self.emit(source, context='image_path_extension', source_field='url', value=parsed.path)
             if 'referer' in record:

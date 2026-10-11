@@ -60,7 +60,12 @@ hostname/path/query/fragment observations without navigation. Invalid brackets,
 ports, ASCII whitespace/control characters and backslashes are uninterpreted;
 other schemes and relative references are unsupported for these supplied logs.
 Registry hostname comparisons require exact equality or a dot-delimited subdomain,
-excluding userinfo/query/path/lookalike matches. They are parsed string matches,
+excluding userinfo/query/path/lookalike matches. Exactly one terminal DNS root
+dot is removed only for this registry comparison; multiple terminal dots do not
+match. Registry observations retain the parsed hostname in `value` and record
+the derived `comparison_hostname` and `comparison_method`. Original URLs,
+canonical record hashes, URL components and literal referrer comparisons remain
+unchanged. They are parsed string matches,
 not provider ownership or browser URL validation. A separate registry-pattern
 scan of the full admitted URL can retain identifier/reference candidates even
 when URL interpretation is unavailable. No truncated URL becomes a target.
@@ -123,10 +128,15 @@ local helper/artifact test, not the active runner's publisher or a simulated
 detonation. Constructed sources are not phishing labels; Python offline policy
 is not OS isolation. Controlled egress and UI remain later stages.
 
-The recorded local Windows/Python 3.13 check passed 35 focused tracker contracts
-and the general suite (615 tests, 607 pass, eight platform exclusions). Actual
-shared CLI/API ownership/read/query/verify/export and supervisor-crash recovery
-passed on this proposal with original EML and explicit no-egress. These worker
+The initial local Windows/Python 3.13 check passed 35 focused tracker contracts
+and the general suite (615 tests, 607 pass, eight platform exclusions). The
+terminal-root-dot review correction reproduces lost matches for all ten registry
+domains and passes 38 focused contracts and the general suite (618 tests,
+610 pass, eight platform exclusions), including original canonical hashes,
+matrix counts, subdomains, double-dot rejection and lookalike boundaries.
+Actual shared CLI/API ownership/read/query/verify/export and supervisor-crash
+recovery passed on the preceding `bf4a676` commit with original EML and explicit
+no-egress; those checks were not repeated for this comparison-only fix. These worker
 flows do not exercise the active tracker caller. A rebuilt wheel matches current
 metadata/entry points and all 90 Python-source bytes; it is not a new clean
 dependency installation. Among those sources only the tracker helper and its
