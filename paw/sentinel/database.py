@@ -347,6 +347,7 @@ class CampaignDatabase:
     def get_victim_intelligence(self, victim_id: int = None, victim_ip: str = None) -> List[Dict[str, Any]]:
         """Get victim intelligence data."""
         with self.connection() as conn:
+            conn.row_factory = sqlite3.Row
             if victim_id:
                 rows = conn.execute("""
                     SELECT * FROM victim_intelligence WHERE id = ?
@@ -363,33 +364,12 @@ class CampaignDatabase:
                     LIMIT 100
                 """).fetchall()
 
-            victims = []
-            for row in rows:
-                victims.append({
-                    'id': row[0],
-                    'victim_ip': row[1],
-                    'victim_ua': row[2],
-                    'click_time': row[3],
-                    'phishing_url': row[4],
-                    'case_id': row[5],
-                    'attacker_correlation': self._safe_load_json(row[6], {}),
-                    'risk_score': row[7],
-                    'analyzed_status': row[8],
-                    'geolocation_data': self._safe_load_json(row[9], {}),
-                    'whois_data': self._safe_load_json(row[10], {}),
-                    'related_ips': self._safe_load_json(row[11], []),
-                    'interaction_type': row[12],
-                    'interaction_confidence': row[13],
-                    'interaction_indicators': self._safe_load_json(row[14], []),
-                    'metadata': self._safe_load_json(row[15], {}),
-                    'created_at': row[16],
-                    'updated_at': row[17]
-                })
-            return victims
+            return [self._victim_row_to_dict(row) for row in rows]
 
     def get_unanalyzed_victims(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get victims that haven't been fully analyzed yet."""
         with self.connection() as conn:
+            conn.row_factory = sqlite3.Row
             rows = conn.execute("""
                 SELECT * FROM victim_intelligence
                 WHERE analyzed_status IN ('captured', 'analyzing')
@@ -397,26 +377,7 @@ class CampaignDatabase:
                 LIMIT ?
             """, (limit,)).fetchall()
 
-            victims = []
-            for row in rows:
-                victims.append({
-                    'id': row[0],
-                    'victim_ip': row[1],
-                    'victim_ua': row[2],
-                    'click_time': row[3],
-                    'phishing_url': row[4],
-                    'case_id': row[5],
-                    'attacker_correlation': self._safe_load_json(row[6], {}),
-                    'risk_score': row[7],
-                    'analyzed_status': row[8],
-                    'geolocation_data': self._safe_load_json(row[9], {}),
-                    'whois_data': self._safe_load_json(row[10], {}),
-                    'related_ips': self._safe_load_json(row[11], []),
-                    'metadata': self._safe_load_json(row[12], {}),
-                    'created_at': row[13],
-                    'updated_at': row[14]
-                })
-            return victims
+            return [self._victim_row_to_dict(row) for row in rows]
 
     def get_victim_statistics(self) -> Dict[str, Any]:
         """Get statistics about victim intelligence data."""
@@ -545,6 +506,7 @@ class CampaignDatabase:
     def get_victims_by_risk_score(self, min_score: int = 5) -> List[Dict[str, Any]]:
         """Get victims with risk score above threshold."""
         with self.connection() as conn:
+            conn.row_factory = sqlite3.Row
             rows = conn.execute("""
                 SELECT * FROM victim_intelligence
                 WHERE risk_score >= ?
@@ -556,6 +518,7 @@ class CampaignDatabase:
     def get_victims_by_country(self, country: str) -> List[Dict[str, Any]]:
         """Get victims from specific country."""
         with self.connection() as conn:
+            conn.row_factory = sqlite3.Row
             rows = conn.execute("""
                 SELECT * FROM victim_intelligence
                 WHERE json_extract(geolocation_data, '$.country') = ?
@@ -596,22 +559,20 @@ class CampaignDatabase:
 
             return correlations
 
-    def _victim_row_to_dict(self, row) -> Dict[str, Any]:
-        """Convert victim intelligence row to dictionary."""
+    def _victim_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Decode known fields by name, independent of migration column order."""
         columns = ['id', 'victim_ip', 'victim_ua', 'click_time', 'phishing_url',
                   'case_id', 'attacker_correlation', 'risk_score', 'analyzed_status',
                   'geolocation_data', 'whois_data', 'related_ips', 'metadata',
                   'created_at', 'updated_at', 'interaction_type', 'interaction_confidence', 'interaction_indicators']
 
-        victim = dict(zip(columns, row))
+        victim = {column: row[column] for column in columns}
 
-        # Parse JSON fields
-        for json_field in ['geolocation_data', 'whois_data', 'related_ips', 'metadata', 'attacker_correlation', 'interaction_indicators']:
-            if victim[json_field]:
-                try:
-                    victim[json_field] = json.loads(victim[json_field])
-                except:
-                    victim[json_field] = {}
+        # Keep the existing general reader's JSON defaults consistent everywhere.
+        for json_field in ('geolocation_data', 'whois_data', 'metadata', 'attacker_correlation'):
+            victim[json_field] = self._safe_load_json(victim[json_field], {})
+        for json_field in ('related_ips', 'interaction_indicators'):
+            victim[json_field] = self._safe_load_json(victim[json_field], [])
 
         return victim
 
