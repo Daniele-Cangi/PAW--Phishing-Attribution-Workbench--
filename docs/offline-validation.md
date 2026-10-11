@@ -339,6 +339,12 @@ for part/container and encapsulated parser-node headers. Ordered fields retain
 separate inner-message scope, raw/derived provenance and global capture budgets.
 The original top-level inventory and selected analysis contracts remain available.
 
+The [MIME CID observation inventory](mime-cid-evidence.md) links supported outer
+HTML attribute observations to captured Content-ID field candidates in the same
+message scope. Duplicate/missing/limited sources and complex marker attributes
+remain explicit; renderer resource selection and attached HTML are outside this
+scope. Existing network URL targets, numeric scores and sender analysis are unchanged.
+
 The [attachment ZIP inventory audit](attachment-archive-inventory.md) preserves
 bounded member records and parser names, makes omissions explicit and propagates
 ZIP limits/reader errors to attachment coverage while retaining other attachments.
