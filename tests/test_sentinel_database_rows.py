@@ -63,6 +63,13 @@ class SentinelDatabaseRows(unittest.TestCase):
             result[key] = json.loads(raw[key]) if raw[key] else default
         return result
 
+    def assert_source_records(self, records, expected):
+        # Keep exact named-storage correspondence for the compatibility fields;
+        # the separate JSON contracts check the additive evidence envelope.
+        self.assertTrue(all(record['json_evidence']['schema_version'] == 1 for record in records))
+        self.assertEqual([{key: value for key, value in record.items() if key != 'json_evidence'}
+                          for record in records], expected)
+
     def populated_row(self, db):
         identifier = db.add_victim_intelligence('192.0.2.1', 'Stored UA Ω',
             'https://example.invalid/source', case_id='source-case',
@@ -102,7 +109,7 @@ class SentinelDatabaseRows(unittest.TestCase):
                 before = Path(db.db_path).read_bytes()
                 for reader, records in self.readers(db, identifier).items():
                     with self.subTest(reader=reader):
-                        self.assertEqual(records, [self.expected_row(raw)])
+                        self.assert_source_records(records, [self.expected_row(raw)])
                 self.assertEqual(Path(db.db_path).read_bytes(), before)
                 self.assertEqual(self.stored_row(db, identifier), raw)
 
@@ -111,7 +118,7 @@ class SentinelDatabaseRows(unittest.TestCase):
         identifier = self.populated_row(db)
         raw = self.stored_row(db, identifier)
         reopened = CampaignDatabase(db.db_path)
-        self.assertEqual(reopened.get_victim_intelligence(victim_id=identifier), [self.expected_row(raw)])
+        self.assert_source_records(reopened.get_victim_intelligence(victim_id=identifier), [self.expected_row(raw)])
         reopened.update_victim_analysis(identifier, interaction_confidence=0.0,
                                        related_ips=[], interaction_indicators=[])
         updated = self.stored_row(reopened, identifier)
@@ -119,7 +126,7 @@ class SentinelDatabaseRows(unittest.TestCase):
         self.assertEqual(updated['created_at'], raw['created_at'])
         self.assertEqual(updated['interaction_confidence'], 0.0)
         for records in self.readers(reopened, identifier).values():
-            self.assertEqual(records, [self.expected_row(updated)])
+            self.assert_source_records(records, [self.expected_row(updated)])
 
     def test_missing_optional_fields_have_consistent_existing_general_reader_defaults(self):
         db = self.database()
@@ -130,9 +137,9 @@ class SentinelDatabaseRows(unittest.TestCase):
         self.assertIsNone(expected['case_id'])
         self.assertEqual(expected['interaction_type'], 'unknown')
         self.assertEqual(expected['interaction_confidence'], 0.0)
-        self.assertEqual(db.get_victim_intelligence(victim_id=identifier), [expected])
-        self.assertEqual(db.get_unanalyzed_victims(), [expected])
-        self.assertEqual(db.get_victims_by_risk_score(0), [expected])
+        self.assert_source_records(db.get_victim_intelligence(victim_id=identifier), [expected])
+        self.assert_source_records(db.get_unanalyzed_victims(), [expected])
+        self.assert_source_records(db.get_victims_by_risk_score(0), [expected])
 
     def test_sql_null_confidence_label_and_dates_are_not_replaced_with_inferences(self):
         db = self.database()
