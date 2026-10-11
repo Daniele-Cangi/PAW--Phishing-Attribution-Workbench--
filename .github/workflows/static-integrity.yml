@@ -218,6 +218,9 @@ jobs:
       - name: Verify bounded static captured-kit observations and unavailable attribution
         run: python -m unittest discover -s tests -p 'test_kit_static.py' -v
 
+      - name: Verify supplied HTML form provenance, bounds and unverified matrix consumption
+        run: python -m unittest discover -s tests -p 'test_form_observations.py' -v
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

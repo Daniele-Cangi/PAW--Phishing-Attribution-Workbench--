@@ -335,6 +335,21 @@ class AttributionMatrix:
 
         elif source_name == 'form_analysis':
             forms = source_data.get('forms', [])
+            if source_data.get('schema_version') == 2:
+                controls = sum(len(form.get('inputs', [])) for form in forms)
+                controls += len(source_data.get('unassigned_controls', []))
+                observations = len(source_data.get('processor_observations', []))
+                summary.update(
+                    evidence_count=len(forms) + controls + observations,
+                    evidence_types=(['static_form_markup'] if forms or controls else [])
+                                   + (['unverified_processor_pattern'] if observations else []),
+                    confidence_level='unavailable', verified=False,
+                    source_status=source_data.get('status', 'unavailable'),
+                    source_sha256=source_data.get('source', {}).get('sha256'),
+                    observation_counts={'forms': len(forms), 'controls': controls,
+                                        'processor_patterns': observations},
+                    reason='Markup and lexical matches do not establish payments or attribution')
+                return summary
             summary['evidence_count'] = len(forms)
             summary['evidence_types'] = ['form_field', 'payment_processor']
             processors = source_data.get('payment_processors', [])

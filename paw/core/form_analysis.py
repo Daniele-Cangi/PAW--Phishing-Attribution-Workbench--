@@ -1,17 +1,34 @@
-# form_analysis.py - HTML Form Analysis for Payment and Attribution
+"""Bounded supplied-HTML form observations, never merchant/behavior verification."""
+from collections import Counter
+from dataclasses import asdict, dataclass
+import hashlib
+from html.parser import HTMLParser
 import re
-import logging
-from typing import Dict, List, Any, Optional, Tuple
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse, parse_qs
-from collections import defaultdict
+from urllib.parse import urljoin, urlsplit
 
-logger = logging.getLogger(__name__)
+
+@dataclass(frozen=True)
+class FormLimits:
+    html_bytes: int = 1024 * 1024
+    forms: int = 128
+    controls: int = 2048
+    attributes: int = 8192
+    observations: int = 2048
+    context_nodes: int = 128
+    value_chars: int = 4096
+
+    def __post_init__(self):
+        if any(type(v) is not int or v <= 0 for v in asdict(self).values()):
+            raise ValueError('Form limits must be positive integers')
+
 
 class FormAnalyzer:
-    """Analyze HTML forms for payment patterns and merchant attribution"""
+    """Inventory literal form/control attributes and unverified pattern matches."""
 
-    def __init__(self):
+    def __init__(self, *, limits=None):
+        if limits is not None and not isinstance(limits, FormLimits):
+            raise ValueError('limits must be FormLimits')
+        self.limits = limits if limits is not None else FormLimits()
         # Known payment processors and their patterns
         self.payment_processors = {
             'stripe': {
@@ -85,409 +102,292 @@ class FormAnalyzer:
             ]
         }
 
-    def analyze_forms(self, html_content: str, url: str = None) -> Dict[str, Any]:
-        """Analyze HTML content for forms and payment patterns"""
-        result = {
-            'forms': [],
-            'payment_processors': [],
-            'suspicious_patterns': [],
-            'attribution_hints': {},
-            'form_summary': {},
-            'errors': []
-        }
 
+    def analyze_forms(self, html_content, url=None):
+        result = {'schema_version': 2, 'status': 'completed', 'verified': False,
+                  'scope': 'static supplied HTML, not browser form ownership or submission',
+                  'source': {'hash_scope': 'complete supplied HTML encoded as UTF-8'},
+                  'url': None, 'limits': asdict(self.limits), 'forms': [],
+                  'unassigned_controls': [], 'base_observations': [], 'script_observations': [],
+                  'processor_observations': [], 'payment_processors': [],
+                  'suspicious_patterns': [], 'correlation_keys': [],
+                  'attribution_hints': {'status': 'unavailable', 'verified': False,
+                      'payment_ecosystem': 'unknown', 'merchant_category': 'unknown',
+                      'risk_indicators': [], 'correlation_keys': [],
+                      'reason': 'Static strings do not verify payments, risk, merchant or operator identity'},
+                  'form_summary': {}, 'errors': [], 'coverage': {
+                      'total_form_count': 0, 'omitted_form_count': 0,
+                      'total_control_count': 0, 'omitted_control_count': 0,
+                      'total_attribute_count': 0, 'omitted_attribute_count': 0,
+                      'total_observation_count': 0, 'omitted_observation_count': 0,
+                      'total_context_node_count': 0, 'omitted_context_node_count': 0,
+                      'limited_value_count': 0, 'issues': []}}
+        parser = _Forms(self, result)
+        if url is not None:
+            if not isinstance(url, str) or len(url) > self.limits.value_chars:
+                parser.issue('invalid_or_limited_page_url')
+            else:
+                try:
+                    url.encode('utf-8')
+                except UnicodeEncodeError:
+                    parser.issue('invalid_page_url_unicode')
+                else:
+                    result['url'] = url
+        if not isinstance(html_content, str):
+            parser.issue('invalid_html_type')
+            return result
+        if len(html_content) > self.limits.html_bytes:
+            parser.issue('html_byte_limit')
+            return result
         try:
-            soup = BeautifulSoup(html_content, 'html.parser')
-            forms = soup.find_all('form')
-
-            for i, form in enumerate(forms):
-                form_analysis = self._analyze_single_form(form, i, url)
-                result['forms'].append(form_analysis)
-
-            # Detect payment processors
-            result['payment_processors'] = self._detect_payment_processors(html_content, soup)
-
-            # Detect suspicious patterns
-            result['suspicious_patterns'] = self._detect_suspicious_patterns(result['forms'])
-
-            # Generate attribution hints
-            result['attribution_hints'] = self._generate_form_attribution_hints(result)
-
-            # Create summary
-            result['form_summary'] = self._create_form_summary(result['forms'])
-
-        except Exception as e:
-            result['errors'].append(f"Form analysis failed: {str(e)}")
-            logger.error(f"Form analysis failed for URL {url}: {e}")
-
+            raw = html_content.encode('utf-8')
+        except UnicodeEncodeError:
+            parser.issue('invalid_html_unicode')
+            return result
+        if len(raw) > self.limits.html_bytes:
+            parser.issue('html_byte_limit')
+            return result
+        result['source'].update(sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw))
+        try:
+            parser.feed(html_content)
+            parser.close()
+        except (AssertionError, ValueError):
+            parser.issue('html_parser_failure')
+        parser.finish(html_content)
         return result
 
-    def _analyze_single_form(self, form, form_index: int, page_url: str = None) -> Dict[str, Any]:
-        """Analyze a single HTML form"""
-        form_analysis = {
-            'index': form_index,
-            'method': form.get('method', 'get').lower(),
-            'action': form.get('action', ''),
-            'enctype': form.get('enctype', ''),
-            'inputs': [],
-            'field_types': {},
-            'payment_indicators': [],
-            'suspicious_elements': []
-        }
+    def correlate_forms_across_pages(self, page_analyses):
+        """Retained API: equality of form patterns is not sourced campaign correlation."""
+        return {'status': 'unavailable', 'verified': False,
+                'reason': 'No independently validated page/campaign correlation contract',
+                'common_processors': {}, 'common_field_patterns': {},
+                'form_similarity_clusters': [], 'payment_ecosystem_consistency': {},
+                'suspicious_pattern_trends': {}}
 
-        # Resolve relative action URL
-        if form_analysis['action'] and page_url:
-            parsed_page = urlparse(page_url)
-            if not form_analysis['action'].startswith(('http://', 'https://')):
-                base_url = f"{parsed_page.scheme}://{parsed_page.netloc}"
-                form_analysis['action'] = base_url + form_analysis['action']
 
-        # Analyze input fields
-        inputs = form.find_all('input')
-        for input_field in inputs:
-            input_analysis = self._analyze_input_field(input_field)
-            form_analysis['inputs'].append(input_analysis)
+class _Forms(HTMLParser):
+    CONTROLS = {'input', 'select', 'textarea', 'button'}
+    INERT = {'script', 'style', 'title', 'textarea'}
 
-            # Categorize field types
-            field_type = input_analysis.get('field_type')
-            if field_type:
-                if field_type not in form_analysis['field_types']:
-                    form_analysis['field_types'][field_type] = []
-                form_analysis['field_types'][field_type].append(input_analysis)
+    def __init__(self, analyzer, result):
+        super().__init__(convert_charrefs=True)
+        self.analyzer, self.result, self.limits = analyzer, result, analyzer.limits
+        self.stack = []
+        self.inert = None
+        self.template_depth = 0
+        self.tag_index = 0
+        self.control_count = 0
+        self.attribute_count = 0
+        self.observation_count = 0
+        self.context_count = 0
 
-        # Check for payment indicators
-        form_analysis['payment_indicators'] = self._check_payment_indicators(form_analysis)
+    def issue(self, reason):
+        self.result['status'] = 'partial'
+        if reason not in self.result['coverage']['issues']:
+            self.result['coverage']['issues'].append(reason)
+            self.result['errors'].append(reason)
 
-        # Check for suspicious elements
-        form_analysis['suspicious_elements'] = self._check_suspicious_elements(form, form_analysis)
+    def attributes(self, attrs):
+        rows = []
+        self.result['coverage']['total_attribute_count'] += len(attrs)
+        for index, (name, value) in enumerate(attrs):
+            if self.attribute_count >= self.limits.attributes:
+                self.result['coverage']['omitted_attribute_count'] += 1
+                self.issue('attribute_count_limit')
+                continue
+            self.attribute_count += 1
+            row = {'index': index, 'name': name, 'value': value,
+                   'status': 'observed', 'representation': 'HTML parser attribute; character references decoded'}
+            if len(name) > self.limits.value_chars or (value is not None and len(value) > self.limits.value_chars):
+                self.result['coverage']['limited_value_count'] += 1
+                row.update(status='limited', name=name[:self.limits.value_chars], value=None,
+                           name_sha256=hashlib.sha256(name.encode('utf-8')).hexdigest())
+                if value is not None:
+                    row.update(value_preview=value[:self.limits.value_chars],
+                               value_sha256=hashlib.sha256(value.encode('utf-8')).hexdigest())
+                self.issue('attribute_value_limit')
+            rows.append(row)
+        return rows, len(rows) == len(attrs) and all(r['status'] == 'observed' for r in rows)
 
-        return form_analysis
+    @staticmethod
+    def declared(node, name):
+        rows = [r for r in node['attributes'] if r['name'] == name]
+        if not node['attributes_complete']:
+            return {'status': 'not_interpreted_limited_attributes', 'value': None}
+        if len(rows) > 1:
+            return {'status': 'not_interpreted_duplicate_attributes', 'value': None}
+        if not rows:
+            return {'status': 'not_declared', 'value': None}
+        return {'status': 'declared', 'value': rows[0]['value']}
 
-    def _analyze_input_field(self, input_field) -> Dict[str, Any]:
-        """Analyze a single input field"""
-        field_analysis = {
-            'type': input_field.get('type', 'text'),
-            'name': input_field.get('name', ''),
-            'id': input_field.get('id', ''),
-            'placeholder': input_field.get('placeholder', ''),
-            'value': input_field.get('value', ''),
-            'required': input_field.get('required') is not None,
-            'field_type': None,
-            'payment_relevance': 'none'
-        }
+    def observe(self, **row):
+        coverage = self.result['coverage']
+        coverage['total_observation_count'] += 1
+        if self.observation_count >= self.limits.observations:
+            coverage['omitted_observation_count'] += 1
+            self.issue('observation_count_limit')
+            return None
+        self.observation_count += 1
+        return {'verified': False, 'interpretation_status': 'lexical_observation', **row}
 
-        # Determine field type based on patterns
-        field_name = (field_analysis['name'] + ' ' + field_analysis['id'] + ' ' + field_analysis['placeholder']).lower()
+    def node(self, tag, attrs):
+        rows, complete = self.attributes(attrs)
+        return {'tag': tag, 'tag_index': self.tag_index,
+                'line': self.getpos()[0], 'column': self.getpos()[1],
+                'attributes': rows, 'attributes_complete': complete}
 
-        for category, patterns in self.field_patterns.items():
-            for pattern in patterns:
-                if re.search(pattern, field_name, re.IGNORECASE):
-                    field_analysis['field_type'] = category
-                    if category in ['credit_card', 'cvv', 'expiry']:
-                        field_analysis['payment_relevance'] = 'high'
-                    elif category in ['amount', 'currency']:
-                        field_analysis['payment_relevance'] = 'medium'
-                    break
-
-        return field_analysis
-
-    def _check_payment_indicators(self, form_analysis: Dict) -> List[str]:
-        """Check for payment-related indicators in form"""
-        indicators = []
-
-        # Check field types
-        field_types = form_analysis.get('field_types', {})
-        if 'credit_card' in field_types:
-            indicators.append('credit_card_fields')
-        if 'cvv' in field_types:
-            indicators.append('cvv_fields')
-        if 'expiry' in field_types:
-            indicators.append('expiry_fields')
-        if 'amount' in field_types:
-            indicators.append('amount_fields')
-
-        # Check for multiple payment fields
-        payment_fields = ['credit_card', 'cvv', 'expiry', 'name']
-        payment_field_count = sum(1 for ft in payment_fields if ft in field_types)
-        if payment_field_count >= 3:
-            indicators.append('complete_payment_form')
-
-        # Check form method and enctype
-        if form_analysis.get('method') == 'post':
-            indicators.append('post_method')
-        if form_analysis.get('enctype') == 'multipart/form-data':
-            indicators.append('file_upload_capable')
-
-        return indicators
-
-    def _check_suspicious_elements(self, form, form_analysis: Dict) -> List[str]:
-        """Check for suspicious elements in form"""
-        suspicious = []
-
-        # Check for hidden sensitive fields
-        hidden_inputs = form.find_all('input', {'type': 'hidden'})
-        sensitive_patterns = ['password', 'token', 'key', 'secret', 'api']
-        for hidden in hidden_inputs:
-            name = hidden.get('name', '').lower()
-            value = hidden.get('value', '')
-            for pattern in sensitive_patterns:
-                if pattern in name and len(value) > 10:  # Long hidden values
-                    suspicious.append(f'hidden_sensitive_field: {name}')
-
-        # Check for obfuscated field names
-        for input_field in form_analysis.get('inputs', []):
-            name = input_field.get('name', '')
-            if name and len(name) > 50:  # Very long field names
-                suspicious.append('obfuscated_field_names')
-
-        # Check for unusual form actions
-        action = form_analysis.get('action', '')
-        if action and 'javascript:' in action.lower():
-            suspicious.append('javascript_form_action')
-
-        # Check for data: URLs
-        if action and action.startswith('data:'):
-            suspicious.append('data_url_form_action')
-
-        return suspicious
-
-    def _detect_payment_processors(self, html_content: str, soup) -> List[Dict[str, Any]]:
-        """Detect payment processors in HTML content"""
-        detected_processors = []
-
-        # Check for script sources
-        scripts = soup.find_all('script', {'src': True})
-        for script in scripts:
-            src = script['src'].lower()
-            for processor_name, patterns in self.payment_processors.items():
-                for domain in patterns['domains']:
-                    if domain in src:
-                        detected_processors.append({
-                            'processor': processor_name,
-                            'detection_method': 'script_domain',
-                            'evidence': src,
-                            'confidence': 'high'
-                        })
-
-        # Check for form patterns in HTML
-        html_lower = html_content.lower()
-        for processor_name, patterns in self.payment_processors.items():
-            for pattern in patterns['form_patterns']:
-                if pattern in html_lower:
-                    detected_processors.append({
-                        'processor': processor_name,
-                        'detection_method': 'form_pattern',
-                        'evidence': pattern,
-                        'confidence': 'medium'
-                    })
-
-        # Check for specific input names
-        all_inputs = soup.find_all('input')
-        for input_field in all_inputs:
-            name = input_field.get('name', '').lower()
-            for processor_name, patterns in self.payment_processors.items():
-                for input_pattern in patterns['input_names']:
-                    if input_pattern in name:
-                        detected_processors.append({
-                            'processor': processor_name,
-                            'detection_method': 'input_name',
-                            'evidence': name,
-                            'confidence': 'high'
-                        })
-
-        # Remove duplicates and sort by confidence
-        unique_processors = {}
-        for proc in detected_processors:
-            key = proc['processor']
-            if key not in unique_processors or self._get_confidence_score(proc['confidence']) > self._get_confidence_score(unique_processors[key]['confidence']):
-                unique_processors[key] = proc
-
-        return list(unique_processors.values())
-
-    def _get_confidence_score(self, confidence: str) -> int:
-        """Convert confidence string to numeric score"""
-        scores = {'low': 1, 'medium': 2, 'high': 3}
-        return scores.get(confidence, 0)
-
-    def _detect_suspicious_patterns(self, forms: List[Dict]) -> List[Dict[str, Any]]:
-        """Detect suspicious patterns across all forms"""
-        suspicious = []
-
-        # Check for multiple payment forms
-        payment_forms = [f for f in forms if 'complete_payment_form' in f.get('payment_indicators', [])]
-        if len(payment_forms) > 1:
-            suspicious.append({
-                'type': 'multiple_payment_forms',
-                'description': 'Multiple complete payment forms detected',
-                'severity': 'medium'
-            })
-
-        # Check for forms with many hidden fields
-        for form in forms:
-            hidden_count = sum(1 for inp in form.get('inputs', []) if inp.get('type') == 'hidden')
-            if hidden_count > 10:
-                suspicious.append({
-                    'type': 'excessive_hidden_fields',
-                    'description': f'Form {form["index"]} has {hidden_count} hidden fields',
-                    'severity': 'low'
-                })
-
-        # Check for suspicious form actions
-        for form in forms:
-            action = form.get('action', '')
-            if action:
-                parsed = urlparse(action)
-                if parsed.scheme not in ['http', 'https', '']:
-                    suspicious.append({
-                        'type': 'suspicious_form_action',
-                        'description': f'Unusual form action scheme: {parsed.scheme}',
-                        'severity': 'medium'
-                    })
-
-        return suspicious
-
-    def _generate_form_attribution_hints(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate attribution hints from form analysis"""
-        hints = {
-            'payment_ecosystem': 'unknown',
-            'merchant_category': 'unknown',
-            'risk_indicators': [],
-            'correlation_keys': []
-        }
-
-        # Payment ecosystem analysis
-        processors = result.get('payment_processors', [])
-        if processors:
-            processor_names = [p['processor'] for p in processors]
-            if 'stripe' in processor_names:
-                hints['payment_ecosystem'] = 'stripe_ecosystem'
-            elif 'paypal' in processor_names:
-                hints['payment_ecosystem'] = 'paypal_ecosystem'
-            elif 'shopify' in processor_names:
-                hints['payment_ecosystem'] = 'shopify_ecosystem'
+    def handle_starttag(self, tag, attrs):
+        self.tag_index += 1
+        if self.inert:
+            return
+        if tag == 'template':
+            self.template_depth += 1
+            return
+        if self.template_depth:
+            return
+        if tag == 'form':
+            coverage = self.result['coverage']; coverage['total_form_count'] += 1
+            if len(self.result['forms']) >= self.limits.forms:
+                coverage['omitted_form_count'] += 1
+                self.issue('form_count_limit'); self.stack.append(None)
             else:
-                hints['payment_ecosystem'] = 'mixed_processors'
+                form = self.node(tag, attrs)
+                form.update(index=len(self.result['forms']), inputs=[], field_types={},
+                            payment_indicators=[], suspicious_elements=[])
+                self.result['forms'].append(form); self.stack.append(form)
+        elif tag in self.CONTROLS:
+            coverage = self.result['coverage']; coverage['total_control_count'] += 1
+            if self.control_count >= self.limits.controls or (self.stack and self.stack[-1] is None):
+                coverage['omitted_control_count'] += 1; self.issue('control_count_limit_or_omitted_form')
+            else:
+                self.control_count += 1
+                control = self.node(tag, attrs)
+                control['field_type_candidates'] = []
+                control['form_index'] = self.stack[-1]['index'] if self.stack else None
+                for attr in control['attributes']:
+                    if attr['status'] != 'observed' or attr['name'] not in {'name', 'id', 'placeholder'} or attr['value'] is None:
+                        continue
+                    for category, patterns in self.analyzer.field_patterns.items():
+                        for pattern in patterns:
+                            for match in re.finditer(pattern, attr['value'], re.I):
+                                row = self.observe(category=category, context='control_attribute_pattern',
+                                    attribute_index=attr['index'], attribute=attr['name'],
+                                    matched_text=match.group(), offset=match.start())
+                                if row is not None: control['field_type_candidates'].append(row)
+                if self.stack: self.stack[-1]['inputs'].append(control)
+                else: self.result['unassigned_controls'].append(control)
+        elif tag in {'base', 'script'}:
+            coverage = self.result['coverage']
+            coverage['total_context_node_count'] += 1
+            if self.context_count >= self.limits.context_nodes:
+                coverage['omitted_context_node_count'] += 1
+                self.issue('context_node_count_limit')
+                if tag == 'script': self.inert = tag
+                return
+            self.context_count += 1
+            script = self.node(tag, attrs)
+            if tag == 'base':
+                self.result['base_observations'].append(script)
+                return
+            self.result['script_observations'].append(script)
+            source = self.declared(script, 'src')
+            script['src_declaration'] = source
+            if source['status'] == 'declared' and source['value']:
+                try: hostname = urlsplit(source['value']).hostname
+                except ValueError: hostname = None
+                for name, patterns in self.analyzer.payment_processors.items():
+                    if hostname and hostname.lower() in patterns['domains']:
+                        row = self.observe(processor=name, context='script_hostname_literal',
+                            value=source['value'], tag_index=script['tag_index'],
+                            line=script['line'], column=script['column'])
+                        if row is not None: self.result['processor_observations'].append(row)
+        if tag in self.INERT:
+            self.inert = tag
 
-        # Merchant category hints
-        forms = result.get('forms', [])
-        payment_indicators = []
-        for form in forms:
-            payment_indicators.extend(form.get('payment_indicators', []))
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
 
-        if 'complete_payment_form' in payment_indicators:
-            hints['merchant_category'] = 'ecommerce_payment'
-        elif 'credit_card_fields' in payment_indicators:
-            hints['merchant_category'] = 'card_processor'
-        elif any('file_upload' in ind for ind in payment_indicators):
-            hints['merchant_category'] = 'data_collection'
+    def handle_endtag(self, tag):
+        if self.inert:
+            if tag == self.inert: self.inert = None
+            return
+        if tag == 'template' and self.template_depth:
+            self.template_depth -= 1
+            return
+        if self.template_depth: return
+        if tag == 'form' and self.stack: self.stack.pop()
 
-        # Risk indicators
-        suspicious = result.get('suspicious_patterns', [])
-        risk_indicators = []
-        for susp in suspicious:
-            risk_indicators.append({
-                'type': susp['type'],
-                'severity': susp['severity'],
-                'description': susp['description']
-            })
+    def resolve(self, literal, base):
+        if not isinstance(literal, str):
+            return {'status': 'not_evaluated', 'candidate': None}
+        try:
+            if any(ord(c) <= 32 or ord(c) == 127 for c in literal):
+                return {'status': 'unsupported_url_characters', 'candidate': None}
+            if base is not None:
+                try:
+                    parsed_base = urlsplit(base)
+                    valid_base = (parsed_base.scheme.lower() in {'http', 'https'} and parsed_base.hostname
+                                  and not any(ord(c) <= 32 or ord(c) == 127 for c in base))
+                except ValueError:
+                    valid_base = False
+                if not valid_base:
+                    base = None
+            candidate = urljoin(base or '', literal)
+            if len(candidate) > self.limits.value_chars:
+                self.issue('derived_url_value_limit')
+                return {'status': 'limited_candidate', 'candidate': None}
+            parsed = urlsplit(candidate)
+            parsed.port  # reject malformed ports without performing a lookup
+            if parsed.scheme.lower() not in {'http', 'https'} or not parsed.hostname:
+                return {'status': 'unresolved_or_unsupported_scheme', 'candidate': None}
+            return {'status': 'derived_candidate', 'candidate': candidate, 'verified': False,
+                    'method': 'urllib.parse.urljoin; not browser navigation'}
+        except ValueError:
+            return {'status': 'malformed_url', 'candidate': None}
 
-        hints['risk_indicators'] = risk_indicators
+    def finish(self, html):
+        if self.stack or self.inert or self.template_depth:
+            self.issue('unterminated_lexical_scope')
+        # First href-bearing base is a lexical candidate context, never a verified origin.
+        base = self.result['url']
+        selected = False
+        for node in self.result['base_observations']:
+            declaration = self.declared(node, 'href')
+            node['href_declaration'] = declaration
+            node['href_resolution'] = self.resolve(declaration['value'], self.result['url'])
+            node['selected_candidate_context'] = False
+            if not selected and declaration['status'] != 'not_declared':
+                selected = True
+                node['selected_candidate_context'] = True
+                base = node['href_resolution']['candidate']
+        # Omitted contexts may contain a first base declaration. Do not infer its absence.
+        if not selected and self.result['coverage']['omitted_context_node_count']:
+            base = None
+        self.result['resolution_context'] = {'value': base, 'verified': False,
+            'selected_base_tag_index': next((n['tag_index'] for n in self.result['base_observations']
+                                            if n['selected_candidate_context']), None),
+            'scope': 'candidate URL-join context from supplied page URL and retained base declaration'}
+        for form in self.result['forms']:
+            form['action_declaration'] = self.declared(form, 'action')
+            form['method_declaration'] = self.declared(form, 'method')
+            form['action'] = form['action_declaration']['value']
+            form['method'] = form['method_declaration']['value']
+            form['action_resolution'] = self.resolve(form['action'], base)
+        # Preserve all existing registry tokens as text matches, not detected processors.
+        for name, patterns in self.analyzer.payment_processors.items():
+            for token in patterns['form_patterns'] + patterns['input_names']:
+                for match in re.finditer(re.escape(token), html, re.I):
+                    row = self.observe(processor=name, context='supplied_html_token',
+                                       token=token, matched_text=match.group(), offset=match.start())
+                    if row is not None: self.result['processor_observations'].append(row)
+        forms = self.result['forms']
+        controls = [control for form in forms for control in form['inputs']]
+        self.result['form_summary'] = {'total_forms': len(forms), 'total_inputs': len(controls),
+            'unassigned_control_count': len(self.result['unassigned_controls']),
+            'scope': 'retained static markup occurrences; not submitted fields or payments',
+            'forms_by_declared_method': dict(Counter(form['method'] for form in forms if form['method'] is not None))}
 
-        # Correlation keys
-        correlation_keys = []
 
-        # Payment processors
-        for proc in processors:
-            correlation_keys.append(f"payment_processor:{proc['processor']}")
-
-        # Form field patterns
-        for form in forms:
-            for field_type in form.get('field_types', {}):
-                correlation_keys.append(f"form_field:{field_type}")
-
-        # Suspicious elements
-        for form in forms:
-            for susp in form.get('suspicious_elements', []):
-                correlation_keys.append(f"suspicious:{susp.split(':')[0]}")
-
-        hints['correlation_keys'] = correlation_keys
-
-        return hints
-
-    def _create_form_summary(self, forms: List[Dict]) -> Dict[str, Any]:
-        """Create a summary of form analysis"""
-        summary = {
-            'total_forms': len(forms),
-            'forms_by_method': defaultdict(int),
-            'total_inputs': 0,
-            'input_types': defaultdict(int),
-            'field_type_distribution': defaultdict(int),
-            'payment_forms': 0,
-            'suspicious_forms': 0
-        }
-
-        for form in forms:
-            # Method distribution
-            summary['forms_by_method'][form.get('method', 'unknown')] += 1
-
-            # Input analysis
-            inputs = form.get('inputs', [])
-            summary['total_inputs'] += len(inputs)
-
-            for inp in inputs:
-                summary['input_types'][inp.get('type', 'unknown')] += 1
-
-            # Field type distribution
-            for field_type in form.get('field_types', {}):
-                summary['field_type_distribution'][field_type] += len(form['field_types'][field_type])
-
-            # Payment and suspicious forms
-            if 'complete_payment_form' in form.get('payment_indicators', []):
-                summary['payment_forms'] += 1
-
-            if form.get('suspicious_elements'):
-                summary['suspicious_forms'] += 1
-
-        return dict(summary)
-
-    def correlate_forms_across_pages(self, page_analyses: List[Dict]) -> Dict[str, Any]:
-        """Correlate form patterns across multiple pages"""
-        correlation = {
-            'common_processors': {},
-            'common_field_patterns': {},
-            'form_similarity_clusters': [],
-            'payment_ecosystem_consistency': {},
-            'suspicious_pattern_trends': {}
-        }
-
-        # Collect all processors
-        all_processors = defaultdict(list)
-        for i, analysis in enumerate(page_analyses):
-            for proc in analysis.get('payment_processors', []):
-                all_processors[proc['processor']].append(i)
-
-        correlation['common_processors'] = {k: v for k, v in all_processors.items() if len(v) > 1}
-
-        # Collect field patterns
-        all_field_types = defaultdict(list)
-        for i, analysis in enumerate(page_analyses):
-            for form in analysis.get('forms', []):
-                for field_type in form.get('field_types', {}):
-                    all_field_types[field_type].append(i)
-
-        correlation['common_field_patterns'] = {k: v for k, v in all_field_types.items() if len(v) > 1}
-
-        # Analyze payment ecosystem consistency
-        ecosystems = [a.get('attribution_hints', {}).get('payment_ecosystem', 'unknown') for a in page_analyses]
-        ecosystem_counts = defaultdict(int)
-        for eco in ecosystems:
-            ecosystem_counts[eco] += 1
-
-        correlation['payment_ecosystem_consistency'] = dict(ecosystem_counts)
-
-        return correlation
-
-def analyze_html_forms(html_content: str, url: str = None) -> Dict[str, Any]:
-    """Convenience function for form analysis"""
-    analyzer = FormAnalyzer()
-    return analyzer.analyze_forms(html_content, url)
+def analyze_html_forms(html_content, url=None):
+    return FormAnalyzer().analyze_forms(html_content, url)
