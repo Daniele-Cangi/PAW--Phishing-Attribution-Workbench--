@@ -101,7 +101,7 @@ def identity_transfer_is_valid(payload, cte):
     return all(len(line) <= 998 for line in payload.split(b'\r\n'))
 
 
-def embedded_wire_payloads(message, limits):
+def embedded_wire_spans(message, limits):
     """Locate embedded attachment bodies in the bounded original wire source.
 
     Follow only multipart framing matching the existing parser tree. Never
@@ -132,7 +132,7 @@ def embedded_wire_payloads(message, limits):
         else:
             continue
         if part.get_content_maintype() == 'message':
-            bodies[id(part)] = raw[body_start:end]
+            bodies[id(part)] = (body_start, end)
             continue
         children = part.get_payload()
         if part.get_content_maintype() != 'multipart' or not isinstance(children, list):
@@ -166,6 +166,13 @@ def embedded_wire_payloads(message, limits):
         if closed and len(spans) == len(children):
             stack.extend((child, a, b) for child, (a, b) in zip(children, spans))
     return bodies
+
+
+def embedded_wire_payloads(message, limits):
+    """Compatibility view of the original body spans used by transfer checks."""
+    spans = embedded_wire_spans(message, limits)
+    raw = getattr(message, '_paw_source_bytes', None)
+    return {identifier:raw[start:end] for identifier,(start,end) in spans.items()}
 
 
 def decoded_payload(part, embedded_wire=None):
@@ -281,9 +288,12 @@ def analyze_mime(message, limits=MimeLimits()):
         if count > limits.max_parts or depth > limits.max_depth:
             raise MimeLimitExceeded('MIME part/depth limit exceeded')
         payload = part.get_payload()
-        has_embedded |= part.get_content_maintype() == 'message' and isinstance(payload, list)
+        has_embedded |= part.get_content_maintype() == 'message'
         if isinstance(payload, list): stack.extend((child, depth + 1) for child in payload)
-    wire_payloads = embedded_wire_payloads(message, limits) if has_embedded else {}
+    wire_spans = embedded_wire_spans(message, limits) if has_embedded else {}
+    raw = getattr(message, '_paw_source_bytes', None)
+    wire_source = ({'path':'input.eml', 'sha256':hashlib.sha256(raw).hexdigest()}
+                   if has_embedded and isinstance(raw, bytes) else None)
     parts, text, html, javascript, urls, attachments, issues = [], [], [], [], [], [], []
     body_parts = []
     decoded_total, text_total = 0, 0
@@ -298,7 +308,9 @@ def analyze_mime(message, limits=MimeLimits()):
             parts.append(item)
             if item['defects']: issues.append({'part_id':path, 'defects':item['defects']})
             continue
-        payload, byte_source = decoded_payload(part, wire_payloads.get(id(part)))
+        span = wire_spans.get(id(part))
+        wire = raw[span[0]:span[1]] if span is not None else None
+        payload, byte_source = decoded_payload(part, wire)
         if payload is None: payload = b''
         decoded_total += len(payload)
         if decoded_total > limits.max_decoded_bytes:
@@ -316,9 +328,22 @@ def analyze_mime(message, limits=MimeLimits()):
         is_attachment = attached or not supported_text
         if is_attachment:
             item['attached'] = True
+            if part.get_content_maintype() == 'message':
+                item['original_wire'] = {'status':'captured' if wire is not None else 'not_evaluated',
+                    'scope':'parser_matched_original_mime_body_span', 'source':wire_source,
+                    'transfer_decoded':False, 'authenticity_verified':False}
+                if wire is not None:
+                    item['original_wire'].update(offset=span[0], size=len(wire),
+                        sha256=hashlib.sha256(wire).hexdigest())
+                else:
+                    item['original_wire']['reason'] = 'Bound original source or matching MIME framing unavailable'
+                    issues.append({'part_id':path, 'original_wire':dict(item['original_wire'])})
             attachments.append({'part':part, 'part_id':path, 'payload':payload, 'byte_source':byte_source,
                 'defects':item['defects'], 'declared_mime':content_type,
                 'filename':part.get_filename(), 'disposition':part.get_content_disposition()})
+            if 'original_wire' in item:
+                attachments[-1]['original_wire'] = dict(item['original_wire'])
+                attachments[-1]['original_wire_payload'] = wire
             if 'transfer_decoding' in item:
                 attachments[-1]['transfer_decoding'] = dict(item['transfer_decoding'])
             if not attached:

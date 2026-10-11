@@ -197,6 +197,12 @@ jobs:
       - name: Verify actual offline attachment ZIP inventories and exports
         run: python tests/integration_archive_inventory_real.py
 
+      - name: Verify original embedded MIME spans and separate derived evidence
+        run: python -m unittest discover -s tests -p 'test_embedded_wire_evidence.py' -v
+
+      - name: Verify actual offline embedded MIME bytes and sealed exports
+        run: python tests/integration_embedded_wire_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

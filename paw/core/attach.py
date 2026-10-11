@@ -151,6 +151,9 @@ def scan_attachments(msg_obj, mime_result=None, evidence_dir=None):
         if 'transfer_decoding' in attachment:
             item['transfer_decoding'] = dict(attachment['transfer_decoding'])
             item['status'] = 'partial'
+        if 'original_wire' in attachment:
+            item['original_wire'] = dict(attachment['original_wire'])
+            if item['original_wire']['status'] != 'captured': item['status'] = 'partial'
         if evidence_dir is not None:
             root = Path(evidence_dir)
             root.mkdir(parents=True, exist_ok=True)
@@ -158,5 +161,12 @@ def scan_attachments(msg_obj, mime_result=None, evidence_dir=None):
             path = root / ('part-' + part_id.replace('.', '-') + '-' + item['sha256'] + '.bin')
             path.write_bytes(data)
             item['evidence_path'] = str(Path(root.name) / path.name).replace('\\', '/')
+            wire = attachment.get('original_wire_payload')
+            if wire is not None:
+                wire_path = root / ('wire-part-' + part_id.replace('.', '-') + '-'
+                                    + item['original_wire']['sha256'] + '.bin')
+                with wire_path.open('xb') as stream:
+                    stream.write(wire)
+                item['original_wire']['evidence_path'] = str(Path(root.name) / wire_path.name).replace('\\', '/')
         output.append(item)
     return output
