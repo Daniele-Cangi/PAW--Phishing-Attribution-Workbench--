@@ -400,6 +400,18 @@ For help: paw help <command>
             from .core.trace import update_report
             update_report(args.case)
         elif args.cmd == "monitor":
+            if args.action == "list":
+                from .sentinel import CampaignDatabase, SentinelConfig
+                config = SentinelConfig()
+                database = CampaignDatabase(config.get("storage.database_path"), read_only=True)
+                campaigns = database.get_active_campaigns()
+                if campaigns:
+                    print("📋 Active Campaigns:")
+                    for campaign in campaigns:
+                        print(f"  {campaign['id']}: {campaign['url']} ({campaign['status']})")
+                else:
+                    print("📋 No active campaigns")
+                return
             from .sentinel import SentinelMonitor
             monitor = SentinelMonitor()
 
@@ -433,14 +445,6 @@ For help: paw help <command>
                     print(f"✅ Campaign removed: {campaign['id']}")
                 else:
                     print(f"❌ Campaign not found for case: {args.case}")
-            elif args.action == "list":
-                campaigns = monitor.get_all_campaigns()
-                if campaigns:
-                    print("📋 Active Campaigns:")
-                    for campaign in campaigns:
-                        print(f"  {campaign['id']}: {campaign['url']} ({campaign['status']})")
-                else:
-                    print("📋 No active campaigns")
             elif args.action == "check":
                 results = monitor.check_now(args.campaign if hasattr(args, 'campaign') and args.campaign else None)
                 if results:

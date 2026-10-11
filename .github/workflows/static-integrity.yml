@@ -230,6 +230,12 @@ jobs:
       - name: Verify actual Sentinel SQLite rows across fresh and partial migrations
         run: python -m unittest discover -s tests -p 'test_sentinel_database_rows.py' -v
 
+      - name: Verify Sentinel passive admission and unmigrated saved rows
+        run: python -m unittest discover -s tests -p 'test_sentinel_passive_open.py' -v
+
+      - name: Verify actual passive Sentinel CLI list and storage preservation
+        run: python tests/integration_sentinel_passive_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

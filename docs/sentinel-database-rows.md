@@ -54,10 +54,11 @@ is a regression check, not an interaction-reader exercise. A real rebuilt wheel
 matches the metadata/entry points and all 90 current package Python sources;
 this is not a clean dependency installation or an accuracy evaluation.
 
-The constructor still creates parent directories/database tables and performs
-migrations. Reader-byte preservation after initialization must not be described
-as read-only opening of an existing evidence database. Passive opening/admission
-is the next focused S11 task. Campaign/check/alert readers and statistical,
+The default writable constructor still creates parent directories/database
+tables and performs migrations. Reader-byte preservation after initialization
+must not be described as read-only opening of an existing evidence database.
+The subsequent [passive-opening contract](sentinel-passive-opening.md) supplies
+an explicit read-only mode and the `monitor list` consumer. Campaign/check/alert readers and statistical,
 intelligence, geographic-report and lifecycle behavior are not comprehensively
 validated by the interaction-row correction.
 
