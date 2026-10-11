@@ -1,5 +1,10 @@
 # Offline engine validation and review scope
 
+The current audit register, source/command inventory, closure criteria and
+remaining work are in the [engine stabilization checkpoint](engine-stabilization-checkpoint.md).
+The opening check counts and workload measurements below describe the initial
+offline cycle; subsequent focused changes have their own linked records.
+
 This change replaces simulated results with measured results or explicit
 unavailability, supervises the CLI/API workers, and preserves original MIME and
 sealed evidence. It includes an already implemented local workbench whose further
@@ -55,20 +60,17 @@ run directory on each invocation. Inspect its result JSON for scenario expectati
 and integrity outcomes. The GitHub workflow runs the contract suites on Linux;
 Windows-specific resource/locking checks require the Windows host.
 
-## Remaining work
+## Current remaining work
 
-- Validate original labeled legitimate/phishing EMLs and audit false positives,
-  header handling, URL extraction/deobfuscation and score interpretation.
-- Reproduce the historical long-running analysis with its original configuration.
-- Validate POSIX supervision, installation on other platforms and legacy standalone scripts.
-- Verify controlled-egress isolation/enrichment/detonation after engine
-  stabilization, using the proposed Windows solution or separate Linux host.
-  Current no-egress is a Python guard, not a native-code or OS sandbox.
-- STIX and campaign correlation remain unavailable until validated. ARF/X-ARF
-  compatibility outputs are local review drafts without asserted standards
-  compliance. Offline CLI DKIM key ingestion is handled separately. Header
-  SimHash now has a versioned algorithm contract; similarity thresholds and
-  cross-case correlation remain unvalidated.
+Follow the finite family register in the [stabilization checkpoint](engine-stabilization-checkpoint.md):
+remaining local helper/entry-point audits, final integrated regressions and
+installation/support checks, independent labeled evaluation, controlled-egress
+isolation and active capabilities, then GUI parity and release acceptance.
+The objective is stabilization and forensic depth; historical runtime reproduction
+and speed optimization are outside the current completion criteria.
+Unavailable STIX/campaign attribution and unvalidated abuse-format compliance
+remain explicit; supplied DKIM key provenance and classification calibration
+are separate from successful offline execution and evidence integrity.
 
 ## Analysis worker import boundary
 
