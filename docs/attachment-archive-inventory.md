@@ -75,7 +75,10 @@ stores only field/matched/ignored/unsafe/NUL counts, status, scope and issues;
 extra-field name text is not retained or copied into markers. Every matching
 declaration is inspected, including duplicates and values later overridden by
 another field. A CRC association is not authentication. Nonmatching CRC/version
-fields are ignored. Unsupported/malformed Unicode values report an unavailable
+fields are ignored. An extra stream with 1–3 trailing bytes cannot frame another
+header and reports `malformed_extra_field`, including after complete unknown or
+Unicode fields. Counts describe framed observations; an incomplete stream cannot
+establish absence of additional declarations. Unsupported/malformed Unicode values report an unavailable
 check; without a known unsafe observation the path value becomes null rather than
 false, archive status becomes partial, and attachment coverage follows. Newer ZIP
 readers may instead reject the malformed field before producing member records.
@@ -103,9 +106,9 @@ keep their explicit unavailable/unknown contracts. No inventory limit/error adds
 maliciousness, authentication or attribution points.
 
 New metadata remains in `attachments.json`, the stable case-detail API and sealed
-ZIP exports. Historical artifacts remain readable. Twenty-five unit tests cover the
+ZIP exports. Historical artifacts remain readable. Twenty-seven unit tests cover the
 reader/name/count/size families and preservation of other attachments. The actual
-offline integration uses 21 full CLI cases and eleven loopback HTTP workers, with
+offline integration uses 22 full CLI cases and twelve loopback HTTP workers, with
 independent standard-parser reconstruction of retained/omitted records and names,
 original payload bytes, seals, coverage and exports. Constructed ZIPs are
 regression inputs, not classification truth. The private 20-message original EML

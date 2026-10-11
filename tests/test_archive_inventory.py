@@ -40,6 +40,13 @@ def make_unicode_zip(entries, version=1, crc_valid=True):
     return buffer.getvalue()
 
 
+def make_extra_zip(extra):
+    info = zipfile.ZipInfo('safe'); info.extra = extra
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer,'w') as archive: archive.writestr(info,b'x')
+    return buffer.getvalue()
+
+
 class ArchiveInventoryTests(unittest.TestCase):
     def test_order_duplicates_and_empty_archive(self):
         result = archive_inventory(make_zip([('same',b'first'),('same',b'second'),('empty',b'')]))
@@ -192,6 +199,43 @@ class ArchiveInventoryTests(unittest.TestCase):
                 entry = result['entries'][0]
                 self.assertIsNone(entry['unsafe_extraction_path'])
                 self.assertEqual(entry['unicode_path_check']['status'],'not_evaluated')
+
+    def test_extra_field_framing_remainders_and_exact_boundaries(self):
+        for prefix in (b'',struct.pack('<HH',0xdead,0),struct.pack('<HH',0xdead,2)+b'ab'):
+            complete = archive_inventory(make_extra_zip(prefix))
+            self.assertEqual(complete['status'],'metadata_only')
+            self.assertFalse(complete['entries'][0]['unsafe_extraction_path'])
+            for tail in (b'u',b'up',b'up\x01'):
+                with self.subTest(prefix=prefix,tail=tail):
+                    result = archive_inventory(make_extra_zip(prefix+tail))
+                    entry = result['entries'][0]
+                    self.assertEqual(result['status'],'partial')
+                    self.assertIsNone(entry['unsafe_extraction_path'])
+                    self.assertEqual(entry['unicode_path_check']['issues'],['malformed_extra_field'])
+                    self.assertEqual(entry['unicode_path_check']['status'],'not_evaluated')
+                    self.assertEqual(result['issues'],['unicode_path_check_unavailable'])
+        oversized = archive_inventory(make_extra_zip(struct.pack('<HH',0xdead,10)+b'u'))
+        self.assertEqual(oversized['status'],'error')
+        self.assertNotIn('entries',oversized)
+
+    def test_extra_fragment_preserves_known_unsafe_path_and_other_attachments(self):
+        value = struct.pack('<BI',1,zlib.crc32(b'safe'))+b'safe\0../evil.txt'
+        field = struct.pack('<HH',0x7075,len(value))+value
+        normal = make_zip([('file',b'content')])
+        for tail in (b'u',b'up',b'up\x01'):
+            payload = make_extra_zip(field+tail)
+            message = EmailMessage(policy=policy.SMTP); message.set_content('outer')
+            values = (normal,payload,normal)
+            for data in values: message.add_attachment(data,maintype='application',subtype='zip',filename='same.zip')
+            with tempfile.TemporaryDirectory() as temporary,offline_policy():
+                result = scan_attachments(None,mime_result=analyze_mime(parse_message_bytes(message.as_bytes())),evidence_dir=Path(temporary)/'attachments')
+                self.assertEqual([item['status'] for item in result],['metadata_only','partial','metadata_only'])
+                entry = result[1]['archive']['entries'][0]
+                self.assertTrue(entry['unsafe_extraction_path'])
+                self.assertEqual(entry['unicode_path_check']['matched_name_count'],1)
+                self.assertEqual(entry['unicode_path_check']['nul_name_count'],1)
+                self.assertEqual(entry['unicode_path_check']['issues'],['malformed_extra_field'])
+                for item,data in zip(result,values): self.assertEqual((Path(temporary)/item['evidence_path']).read_bytes(),data)
 
     def test_unsafe_paths_and_original_separator_view(self):
         names = ('../a','dir/../a','/absolute','C:/drive','..\\escape','safe/a')

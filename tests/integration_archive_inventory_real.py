@@ -47,6 +47,19 @@ def make_unicode_zip(entries, crc_valid=True):
     return buffer.getvalue()
 
 
+def make_fragment_zip():
+    buffer=io.BytesIO()
+    with zipfile.ZipFile(buffer,'w') as archive:
+        for index,tail in enumerate((b'u',b'up',b'up\x01')):
+            info=zipfile.ZipInfo('safe'+str(index)); info.extra=tail
+            archive.writestr(info,b'Framing regression')
+        info=zipfile.ZipInfo('safe')
+        field=struct.pack('<BI',1,zlib.crc32(b'safe'))+b'safe\0../evil.txt'
+        info.extra=struct.pack('<HH',0x7075,len(field))+field+b'u'
+        archive.writestr(info,b'Known unsafe observation before remainder')
+    return buffer.getvalue()
+
+
 def expected_unicode_paths(entry):
     """Independent extra-field walk; no PAW collector or sanitization helper."""
     result={'status':'completed','scope':'crc_matched_version_1_unicode_path_extra_values',
@@ -74,6 +87,7 @@ def expected_unicode_paths(entry):
         view=name.replace('\\','/')
         result['unsafe_name_count']+=int(view.startswith('/') or '..' in view.split('/') or ':' in view or '\x00' in view)
         result['nul_name_count']+=int('\x00' in view)
+    if position!=len(entry.extra): result['issues'].append('malformed_extra_field')
     if result['issues']: result['status']='not_evaluated'
     return result
 
@@ -194,6 +208,7 @@ def main():
         'unicode-nul.eml':[make_unicode_zip([('safe','safe\x00../evil.txt'),('legacy','safe\x00'+'x'*5000)])],
         'unicode-nul-ignored.eml':[make_unicode_zip([('safe','safe\x00../evil.txt')],crc_valid=False)],
         'unicode-invalid.eml':[normal,make_unicode_zip([('safe','path')]).replace(b'path',b'pat\xff'),normal],
+        'unicode-fragments.eml':[normal,make_fragment_zip(),normal],
         'mixed.eml':[b'PK\x03\x04broken',normal,make_zip([('same',b'a'),('same',b'b'),('../path',b'')])]}
     samples={}
     for name,values in payloads.items():
@@ -224,6 +239,9 @@ def main():
         ignored=inventories['unicode-nul-ignored.eml'][0]['archive']['entries'][0]
         assert ignored['unsafe_extraction_path'] is False and ignored['unicode_path_check']['ignored_field_count']==1
         assert [item['status'] for item in inventories['unicode-invalid.eml']]==['metadata_only','partial','metadata_only']
+        fragments=inventories['unicode-fragments.eml']
+        assert [item['status'] for item in fragments]==['metadata_only','partial','metadata_only']
+        assert [field['unsafe_extraction_path'] for field in fragments[1]['archive']['entries']]==[None,None,None,True]
         if sys.version_info >= (3,12):
             assert inventories['unicode-large.eml'][0]['archive']['limited_name_count']==1
             assert inventories['unicode-large.eml'][0]['archive']['macro_container_entries']==[]
@@ -253,7 +271,7 @@ def main():
                 else: raise TimeoutError('API startup')
                 for name in ('over-count.eml','broken.eml','nul-name.eml','name-budget.eml','unsupported-reader.eml',
                              'unicode-large.eml','unicode-budget.eml','unicode-paths.eml',
-                             'unicode-nul.eml','unicode-nul-ignored.eml','unicode-invalid.eml'):
+                             'unicode-nul.eml','unicode-nul-ignored.eml','unicode-invalid.eml','unicode-fragments.eml'):
                     raw=samples[name]; boundary='paw_archive_inventory_fixture'
                     upload=(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{name}"\r\nContent-Type: message/rfc822\r\n\r\n'.encode()
                         +raw+f'\r\n--{boundary}--\r\n'.encode())
@@ -280,7 +298,7 @@ def main():
                 server.terminate()
                 try: server.wait(timeout=15)
                 except subprocess.TimeoutExpired: server.kill(); server.wait(timeout=15)
-    print('PASS: 21 actual full CLI cases and eleven loopback HTTP workers; ZIP prefix/name budgets, both parser views and unsanitized Unicode Path observations, partial/unknown coverage, unsupported-reader continuation, member-metadata-only boundaries, exact payloads, seals, API and ZIP. Offline; constructed inputs are not accuracy labels.')
+    print('PASS: 22 actual full CLI cases and twelve loopback HTTP workers; ZIP prefix/name budgets, both parser views and unsanitized Unicode Path/framing observations, partial/unknown coverage, unsupported-reader continuation, member-metadata-only boundaries, exact payloads, seals, API and ZIP. Offline; constructed inputs are not accuracy labels.')
 
 
 if __name__=='__main__': main()

@@ -58,6 +58,8 @@ def _unicode_path_check(entry):
                 result['nul_name_count'] += '\x00' in name
                 continue
         if issue not in result['issues']: result['issues'].append(issue)
+    if offset != len(extra) and 'malformed_extra_field' not in result['issues']:
+        result['issues'].append('malformed_extra_field')
     if result['issues']: result['status'] = 'not_evaluated'
     return result
 
