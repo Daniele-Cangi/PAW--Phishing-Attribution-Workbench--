@@ -109,7 +109,11 @@ The identified active caller is `detonate/runner.generate_enrichment_files`:
 the combined `AttributionMatrix` input. Version-2 consumption now reads
 observations and retains counts, source indexes/kinds/hashes/admission failures
 and partial status with unavailable confidence. Registry-pattern counts are
-separate from ordinary supplied-log literals, avoiding a tracker claim for an
+accompanied by an independent copy of the complete tracker `coverage`, including
+processed bytes, total/omitted observations, total/omitted log entries and issues.
+The retained `evidence_count` remains distinct from these omission totals; missing
+coverage remains null rather than becoming fabricated zero counts. Registry
+pattern counts are separate from ordinary supplied-log literals, avoiding a tracker claim for an
 unrelated URL. Other matrix sources and historical version-1 imports are outside
 this correction; the sourced operator dataset remains unavailable.
 
@@ -134,9 +138,17 @@ terminal-root-dot review correction reproduces lost matches for all ten registry
 domains and passes 38 focused contracts and the general suite (618 tests,
 610 pass, eight platform exclusions), including original canonical hashes,
 matrix counts, subdomains, double-dot rejection and lookalike boundaries.
+The subsequent matrix-coverage P2 was reproduced on `1783b42`: a partial tracker
+inventory retained 14 omitted observations or four omitted log entries that the
+matrix summary dropped. Passing through the complete coverage fixes that loss;
+39 focused contracts and the general suite (619 tests, 611 pass, eight platform
+exclusions) pass. Coverage survives actual atomic JSON, sealing and ZIP export;
+source/total byte, observation count/value, log entry, JSON node/depth and invalid
+input reasons are preserved without shared mutable lists. Extraction is unchanged
+from `1783b42`; only the tracker version-2 matrix branch changes in this follow-up.
 Actual shared CLI/API ownership/read/query/verify/export and supervisor-crash
 recovery passed on the preceding `bf4a676` commit with original EML and explicit
-no-egress; those checks were not repeated for this comparison-only fix. These worker
+no-egress; those checks were not repeated for either review correction. These worker
 flows do not exercise the active tracker caller. A rebuilt wheel matches current
 metadata/entry points and all 90 Python-source bytes; it is not a new clean
 dependency installation. Among those sources only the tracker helper and its

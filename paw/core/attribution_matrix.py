@@ -1,6 +1,7 @@
 # attribution_matrix.py - Unified Attribution Matrix for Operator Hypothesis Generation
 import json
 import logging
+from copy import deepcopy
 from typing import Dict, List, Any, Optional, Tuple
 from collections import defaultdict
 import datetime
@@ -308,6 +309,7 @@ class AttributionMatrix:
                                    + (['supplied_log_literal'] if log_literals else []),
                     confidence_level='unavailable', verified=False,
                     source_status=source_data.get('status', 'unavailable'),
+                    coverage=deepcopy(source_data.get('coverage')),
                     observation_counts={'registry_patterns': patterns, 'log_literals': log_literals},
                     sources=[{'index': s.get('index'), 'input_index': s.get('input_index'), 'kind': s.get('kind'),
                               'status': s.get('status'), 'sha256': s.get('sha256'),

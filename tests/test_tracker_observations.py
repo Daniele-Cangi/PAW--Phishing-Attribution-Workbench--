@@ -370,12 +370,54 @@ class TrackerObservationContracts(unittest.TestCase):
                 self.assertEqual(summary['evidence_count'], len(result['observations']))
                 self.assertEqual(summary['confidence_level'], 'unavailable')
                 self.assertEqual(summary['source_status'], result['status'])
+                self.assertEqual(summary['coverage'], result['coverage'])
                 self.assertEqual(summary['sources'][0]['sha256'], result['sources'][0].get('sha256'))
                 self.assertEqual(summary['sources'][0]['reason'], result['sources'][0].get('reason'))
                 self.assertEqual(summary['evidence_types'], ['unverified_tracker_pattern'] if result['observations'] else [])
                 self.assertEqual(matrix['hypotheses'], [])
                 self.assertEqual(matrix['operator_attribution']['status'], 'unavailable')
                 self.assertEqual(result, original)
+
+    def test_matrix_preserves_complete_coverage_for_each_tracker_omission_and_failure(self):
+        before = len(violations())
+        with offline_policy():
+            cases = [
+                ('observation_count_limit', self.extractor(observations=1).extract_from_html('UA-12345-1 ' * 15)),
+                ('observation_value_limit', self.extractor(value_chars=8).extract_from_html('UA-12345-1')),
+                ('network_entry_limit', self.extractor(network_entries=1).extract_from_network_logs([{'url': 'https://example.invalid/x'}] * 5)),
+                ('source_byte_limit', self.extractor(source_bytes=4).extract_from_html('UA-12345-1')),
+                ('total_byte_limit', extract_trackers('UA-12345-1', 'UA-54321-1', limits=TrackerLimits(total_bytes=10))),
+                ('json_node_limit', self.extractor(json_nodes=1).extract_from_network_logs([{'url': 'https://example.invalid/x'}])),
+                ('json_depth_limit', self.extractor(json_depth=1).extract_from_network_logs([{'extra': [1]}])),
+                ('invalid_source_type', self.extractor().extract_from_html(None)),
+                ('invalid_log_record_type', self.extractor().extract_from_network_logs([None])),
+                ('invalid_url_type', self.extractor().extract_from_network_logs([{'url': None}]))]
+            for reason, result in cases:
+                with self.subTest(reason=reason):
+                    original = copy.deepcopy(result)
+                    matrix = AttributionMatrix().generate_attribution_matrix({'trackers': result})
+                    summary = matrix['evidence_summary']['enrichment_sources']['trackers']
+                    self.assertEqual(summary['coverage'], result['coverage'])
+                    self.assertIn(reason, summary['coverage']['issues'])
+                    self.assertEqual(summary['source_status'], 'partial')
+                    self.assertEqual(summary['evidence_count'], len(result['observations']))
+                    self.assertEqual(summary['confidence_level'], 'unavailable')
+                    if reason == 'observation_count_limit':
+                        self.assertEqual(summary['coverage']['total_observation_count'], 15)
+                        self.assertEqual(summary['coverage']['omitted_observation_count'], 14)
+                    if reason == 'network_entry_limit':
+                        self.assertEqual(summary['coverage']['total_log_count'], 5)
+                        self.assertEqual(summary['coverage']['omitted_log_count'], 4)
+                    summary['coverage']['issues'].append('output mutation')
+                    summary['coverage']['processed_bytes'] = -1
+                    self.assertEqual(result, original)
+                    result['coverage']['issues'].append('input mutation')
+                    self.assertNotIn('input mutation', summary['coverage']['issues'])
+            missing = self.extractor().extract_from_html('')
+            missing.pop('coverage')
+            summary = AttributionMatrix().generate_attribution_matrix({'trackers': missing})['evidence_summary']['enrichment_sources']['trackers']
+            self.assertIsNone(summary['coverage'])
+        self.assertEqual(len(violations()), before)
 
     def test_plain_log_url_is_not_summarized_as_a_tracker_pattern(self):
         result = self.extractor().extract_from_network_logs([{'url': 'https://example.invalid/x'}])
@@ -384,6 +426,7 @@ class TrackerObservationContracts(unittest.TestCase):
         self.assertEqual(summary['evidence_types'], ['supplied_log_literal'])
         self.assertEqual(summary['observation_counts'], {'registry_patterns': 0, 'log_literals': 1})
         self.assertEqual(summary['confidence_level'], 'unavailable')
+        self.assertEqual(summary['coverage'], result['coverage'])
 
     def test_canonical_log_hash_and_results_do_not_depend_on_dictionary_order(self):
         a = {'url': 'https://example.invalid/x', 'metadata': {'b': 2, 'a': 'é'}}
@@ -402,8 +445,13 @@ class TrackerObservationContracts(unittest.TestCase):
             before = len(violations())
             with offline_policy():
                 result = extract_trackers((case / 'supplied.html').read_text(encoding='utf-8'),
-                    (case / 'supplied.js').read_text(encoding='utf-8'), json.loads(raw_logs))
+                    (case / 'supplied.js').read_text(encoding='utf-8'), json.loads(raw_logs),
+                    limits=TrackerLimits(observations=1))
                 matrix = AttributionMatrix().generate_attribution_matrix({'trackers': result})
+                summary = matrix['evidence_summary']['enrichment_sources']['trackers']
+                self.assertEqual(summary['coverage'], result['coverage'])
+                self.assertGreater(summary['coverage']['omitted_observation_count'], 0)
+                self.assertEqual(summary['source_status'], 'partial')
                 atomic_json(case / 'enrichment_trackers.json', result)
                 atomic_json(case / 'attribution_matrix.json', matrix)
                 self.assertEqual(result['sources'][2]['sha256'], hashlib.sha256(canonical(logs[0])).hexdigest())
