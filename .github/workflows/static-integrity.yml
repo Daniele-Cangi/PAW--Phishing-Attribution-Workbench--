@@ -209,6 +209,12 @@ jobs:
       - name: Verify actual offline URL source links and sealed exports
         run: python tests/integration_url_sources_real.py
 
+      - name: Verify bounded MIME CID candidate relationships and scopes
+        run: python -m unittest discover -s tests -p 'test_mime_cid.py' -v
+
+      - name: Verify actual offline MIME CID cases and sealed API exports
+        run: python tests/integration_mime_cid_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

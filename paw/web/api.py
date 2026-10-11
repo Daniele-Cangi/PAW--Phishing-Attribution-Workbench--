@@ -427,7 +427,8 @@ async def get_case_detail(case_id: str):
         'attribution_matrix':'attribution_matrix.json','execution':'execution.json',
         'criminal_intelligence':'criminal_intelligence.json','header_inventory':'header_inventory.json',
         'mime_body_evidence':'mime_body_evidence.json','mime_header_inventory':'mime_header_inventory.json',
-        'url_source_inventory':'url_source_inventory.json','url_evidence':'url_evidence.json'}
+        'url_source_inventory':'url_source_inventory.json','url_evidence':'url_evidence.json',
+        'mime_cid_inventory':'mime_cid_inventory.json'}
     for key, name in files.items():
         if (directory/name).exists():
             result[key] = artifact(directory/name, result.setdefault('artifact_errors', {}))

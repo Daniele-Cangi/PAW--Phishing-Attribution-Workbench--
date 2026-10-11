@@ -513,6 +513,9 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
     url_source_inventory = inventory_url_sources(mime_result, body_inventory, msg, headers,
                                                 header_inventory, url_evidence)
     atomic_json(os.path.join(case_dir, 'url_source_inventory.json'), url_source_inventory)
+    from .mime_cid import inventory_mime_cids, cid_coverage
+    mime_cid_inventory = inventory_mime_cids(mime_result, body_inventory, mime_header_inventory)
+    atomic_json(os.path.join(case_dir, 'mime_cid_inventory.json'), mime_cid_inventory)
     stage_status = {'detonation': {'status': 'skipped', 'reason': 'no-egress' if no_egress else 'No URLs'},
                     'network_enrichment': {'status': 'skipped' if no_egress else 'not_evaluated', 'reason': 'no-egress' if no_egress else 'Individual lookup outcomes apply'},
                     'attachment_metadata': {'status': 'not_evaluated'}}
@@ -520,6 +523,7 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
     stage_status['mime_header_inventory'] = mime_header_coverage(mime_header_inventory)
     stage_status['mime_body_evidence'] = body_evidence_coverage(body_inventory)
     stage_status['url_sources'] = url_source_coverage(url_source_inventory)
+    stage_status['mime_cids'] = cid_coverage(mime_cid_inventory)
     url_results = deobfuscated.get('urls', [])
     stage_status['url_interpretation'] = {
         'status':'partial' if any(r.get('status') != 'completed' or r.get('analysis_status') == 'partial'
@@ -1163,6 +1167,10 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
         f"omitted: {url_source_inventory['omitted_link_count']}; "
         f"unmapped records: {url_source_inventory['unmapped_evidence_count']}; status: {url_source_inventory['status']}\n"
         "- Per-part decoded body and first selected Subject/From views; existing URL records and targets unchanged.\n"
+        "\n## MIME CID Candidate Links\n"
+        f"- Artifact: mime_cid_inventory.json; attribute observations: {mime_cid_inventory['inventoried_observation_count']}; "
+        f"candidate links: {mime_cid_inventory['inventoried_link_count']}; status: {mime_cid_inventory['status']}\n"
+        "- Same-message captured Content-ID candidates; resource selection, rendering and authenticity unverified.\n"
         "\n## Received Path\n")
     for i,h in enumerate(hops, start=1):
         tech_md += f"- Hop {i}: by={h.get('by')} from={h.get('from')} ip={h.get('ip')} date={h.get('date')} helo={h.get('helo')} ptr={h.get('ptr')} skew_s={h.get('skew_s')} fqdn_ok={h.get('fqdn_ok')} helo_ptr_match={h.get('helo_ptr_match')} role={h.get('role')}\n"
