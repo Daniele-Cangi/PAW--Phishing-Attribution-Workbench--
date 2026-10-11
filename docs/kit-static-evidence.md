@@ -33,6 +33,9 @@ replacement decoding is explicit; a lossy flag distinguishes raw captures from
 derived text. File hashes bind the bytes observed at ingestion, not the remote
 site's identity or authenticity. Capture files remain in their existing case
 directory and are not modified by this reader.
+Complete raw-capture metadata survives rejection of replacement-decoded text
+by per-source or aggregate text budgets. Oversized raw reads do not receive a
+hash of their bounded prefix masquerading as a complete capture hash.
 
 Default budgets:
 
@@ -68,6 +71,10 @@ unverified artifact reference under `campaign_origin.static_observations`, rathe
 than turning candidate URLs into a `kit_c2_analysis` infrastructure assertion.
 The existing unified matrix retains this artifact under its intelligence-module
 key. Active collection and full active report/export behavior remain S14 work.
+Static publication is outside endpoint/summary-discovery conditions, with an
+explicit no-egress guard. Campaign JSON/container validation precedes all
+publication writes: rejection preserves both existing files (or their absence).
+Writes are atomic per file, not a transaction across both artifact paths.
 The host's full `--no-egress` path continues to skip collection and this consumer;
 static helper tests do not prove that detonation is working.
 
@@ -76,10 +83,20 @@ files, without mocks or sample network access. Constructed sources establish
 operational/provenance contracts, not phishing labels or classification accuracy.
 POSIX symlink/FIFO checks are separate from Windows validation.
 
-Local validation on Python 3.13 / Windows: 21 focused tests (20 passed, one POSIX
+Initial validation on Python 3.13 / Windows: 21 focused tests (20 passed, one POSIX
 skip), 533 general tests (525 passed, eight platform skips), actual shared
 CLI/HTTP query/export/verification and supervisor-crash recovery passed. A real
 wheel contains all 90 Python sources with matching bytes. Actual local Windows
 root/nested junction checks passed without following their sources. These checks
 do not exercise suspicious-target collection, install all optional dependencies
 or establish OS isolation. The POSIX FIFO/symlink regression is included in CI.
+
+The review correction adds scalar/captured raw-versus-derived limit regressions,
+rejected publication with existing/absent artifacts and all malformed JSON
+container types, and actual static publication with missing/empty/malformed
+summary metadata. A source-control-flow regression binds that consumer outside
+endpoint/summary guards while retaining the no-egress guard. This is explicit
+static reachability/consumer evidence, not an active trace/collection run.
+On the corrected source, all 23 focused contracts were included in 535 general
+tests (527 passed, eight platform skips). Actual shared CLI/HTTP query/export,
+shutdown/crash recovery and the wheel's 90 source-byte matches passed again.

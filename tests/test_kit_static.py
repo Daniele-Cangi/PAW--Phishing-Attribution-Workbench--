@@ -171,9 +171,66 @@ class KitStaticTests(unittest.TestCase):
             (root/'c.css').write_text(CSS)
             result = analyze_captured_kit(root, limits=replace(KitLimits(), source_bytes=50, sources=2))
             self.assertEqual(result['sources'][0]['reason'], 'source_byte_limit')
+            self.assertNotIn('captured_sha256', result['sources'][0])
             self.assertEqual(result['sources'][1]['status'], 'analyzed')
             self.assertEqual(result['coverage']['omitted_source_count'], 1)
             self.assertEqual(result['status'], 'partial')
+
+    def test_complete_raw_provenance_survives_all_derived_text_admission_limits(self):
+        for kind in ('html', 'js', 'css'):
+            for raw, maximum in ((b'\xff', 1), (b'\xff'*2, 2), (b'\xff'+b'a'*3, 4)):
+                with self.subTest(kind=kind, raw=raw), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory); (root/('bad.'+kind)).write_bytes(raw)
+                    result = analyze_captured_kit(root, limits=replace(KitLimits(), source_bytes=maximum))
+                    source = result['sources'][0]
+                    self.assertEqual(source['status'], 'not_analyzed')
+                    self.assertEqual(source['reason'], 'source_byte_limit')
+                    self.assertEqual(source['captured_sha256'], hashlib.sha256(raw).hexdigest())
+                    self.assertEqual(source['captured_bytes'], len(raw))
+                    self.assertTrue(source['decoding_lossy'])
+                    self.assertNotIn('text_utf8_sha256', source)
+                    self.assertEqual(result['observations'], [])
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root/('a.'+kind)).write_bytes(b'a')
+                (root/('b.'+kind)).write_bytes(b'b')
+                result = analyze_captured_kit(root, limits=replace(KitLimits(), total_bytes=1))
+                source = result['sources'][1]
+                self.assertEqual(source['reason'], 'total_byte_limit')
+                self.assertEqual(source['captured_sha256'], hashlib.sha256(b'b').hexdigest())
+                self.assertEqual(source['captured_bytes'], 1)
+                self.assertFalse(source['decoding_lossy'])
+
+    def test_captured_publication_is_independent_of_network_metadata(self):
+        for summary in (None, {}, {'endpoints': []}, {'endpoints': None}, '{broken'):
+            with self.subTest(summary=summary), tempfile.TemporaryDirectory() as directory:
+                case = Path(directory); captures = case/'detonation'/'runs'; captures.mkdir(parents=True)
+                (captures/'page.html').write_bytes(HTML.encode())
+                if summary is not None:
+                    (case/'detonation'/'summary.json').write_text(summary if isinstance(summary, str) else json.dumps(summary))
+                with offline_policy():
+                    result = publish_captured_kit_inventory(case)
+                self.assertTrue(result['observations'])
+                self.assertTrue((case/'phishing_kit_analysis.json').is_file())
+                stored = json.loads((case/'campaign_origin.json').read_text())
+                self.assertEqual(stored['static_observations']['captured_kit']['path'], 'phishing_kit_analysis.json')
+        # Bind this actual consumer to trace's source control flow without
+        # substituting a fake active run for the deferred collection capability.
+        tree = ast.parse(Path(trace.__file__).read_text(encoding='utf-8'))
+        guards = []; offsets = []
+        def walk(node, conditions):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'publish_captured_kit_inventory':
+                guards.append(conditions); offsets.append(node.lineno)
+            inner = conditions + [ast.unparse(node.test)] if isinstance(node, ast.If) else conditions
+            for child in ast.iter_child_nodes(node): walk(child, inner)
+        walk(tree, [])
+        self.assertEqual(len(guards), 1)
+        self.assertTrue(any('not no_egress' in condition for condition in guards[0]))
+        self.assertFalse(any('endpoints' in condition or 'det_sum' in condition for condition in guards[0]))
+        summary_reads = [node.lineno for node in ast.walk(tree) if isinstance(node, ast.Call)
+                         and isinstance(node.func, ast.Name) and node.func.id == 'read_json'
+                         and any(isinstance(arg, ast.Name) and arg.id == 'det_sum' for arg in node.args)]
+        self.assertTrue(summary_reads and offsets[0] < min(summary_reads))
 
     def test_capture_directory_depth_entries_and_missing_directory(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -189,7 +246,8 @@ class KitStaticTests(unittest.TestCase):
             case = Path(directory)/'case-static-fixture'
             captures = case/'detonation'/'runs'; captures.mkdir(parents=True)
             (captures/'page.html').write_bytes(HTML.encode())
-            campaign = {'attribution_confidence': 'unavailable', 'other_observations': ['keep']}
+            campaign = {'attribution_confidence': 'unavailable', 'other_observations': ['keep'],
+                        'static_observations': {'existing': {'value': 'keep'}}}
             (case/'campaign_origin.json').write_text(json.dumps(campaign), encoding='utf-8')
             before = len(violations())
             with offline_policy():
@@ -198,7 +256,9 @@ class KitStaticTests(unittest.TestCase):
                 self.assertEqual(stored['static_observations']['captured_kit']['observation_count'], len(result['observations']))
                 self.assertFalse(stored['static_observations']['captured_kit']['verified'])
                 self.assertNotIn('infrastructure_chain', stored)
-                for key, value in campaign.items(): self.assertEqual(stored[key], value)
+                for key, value in campaign.items():
+                    if key == 'static_observations': self.assertEqual(stored[key]['existing'], value['existing'])
+                    else: self.assertEqual(stored[key], value)
                 self.assertEqual(json.loads((case/'phishing_kit_analysis.json').read_text()), result)
                 self.assertFalse(list(case.glob('*.tmp')))
                 seal_case(case)
@@ -211,11 +271,21 @@ class KitStaticTests(unittest.TestCase):
     def test_consumer_rejects_malformed_campaign_without_replacing_original(self):
         with tempfile.TemporaryDirectory() as directory:
             case = Path(directory)
+            captures = case/'detonation'/'runs'; captures.mkdir(parents=True)
+            (captures/'page.html').write_bytes(HTML.encode())
             path = case/'campaign_origin.json'
-            for raw in (b'{"static_observations": "invalid"}', b'[]', b'false', b'null', b'{broken'):
-                path.write_bytes(raw)
-                with self.assertRaises(ValueError): publish_captured_kit_inventory(case)
-                self.assertEqual(path.read_bytes(), raw)
+            inventory = case/'phishing_kit_analysis.json'; prior = b'{"prior":"preserve"}'
+            for existing in (False, True):
+                for raw in (b'{"static_observations": "invalid"}', b'{"static_observations": null}',
+                            b'{"static_observations": []}', b'[]', b'false', b'true', b'0', b'""', b'null', b'{broken'):
+                    path.write_bytes(raw)
+                    if existing: inventory.write_bytes(prior)
+                    else: inventory.unlink(missing_ok=True)
+                    with self.assertRaises(ValueError): publish_captured_kit_inventory(case)
+                    self.assertEqual(path.read_bytes(), raw)
+                    if existing: self.assertEqual(inventory.read_bytes(), prior)
+                    else: self.assertFalse(inventory.exists())
+                    self.assertFalse(list(case.glob('*.tmp')))
 
     @unittest.skipUnless(os.name == 'posix', 'POSIX FIFO and symlink semantics')
     def test_capture_does_not_follow_symlinks_or_read_fifo(self):

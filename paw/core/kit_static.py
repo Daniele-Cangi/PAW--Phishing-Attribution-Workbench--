@@ -80,6 +80,11 @@ class _Inventory:
         if path is not None:
             record['path'] = path
         sources.append(record)
+        if raw is not None:
+            # Complete bounded raw captures retain provenance even when their
+            # replacement-decoded text cannot be admitted for analysis.
+            record.update(captured_bytes=len(raw), captured_sha256=hashlib.sha256(raw).hexdigest(),
+                          decoding='utf-8 with replacement', decoding_lossy=raw.decode('utf-8', errors='replace').encode('utf-8') != raw)
         if error:
             record['reason'] = error
             self.issue(error)
@@ -110,9 +115,6 @@ class _Inventory:
         self.result['coverage']['processed_bytes'] += len(data)
         record.update(status='analyzed', text_utf8_sha256=hashlib.sha256(data).hexdigest(),
                       text_utf8_bytes=len(data), hash_scope='complete supplied text encoded as UTF-8')
-        if raw is not None:
-            record.update(captured_bytes=len(raw), captured_sha256=hashlib.sha256(raw).hexdigest(),
-                          decoding='utf-8 with replacement', decoding_lossy=raw.decode('utf-8', errors='replace').encode('utf-8') != raw)
         try:
             if kind == 'html':
                 parser = _HTML(self, record)
@@ -305,17 +307,17 @@ def publish_captured_kit_inventory(case_dir):
     from .runtime import atomic_json
     import json
     case = Path(case_dir)
-    analysis = analyze_captured_kit(case/'detonation'/'runs')
-    atomic_json(case/'phishing_kit_analysis.json', analysis)
     try:
         campaign = json.loads((case/'campaign_origin.json').read_text(encoding='utf-8'))
     except FileNotFoundError:
         campaign = {}
     if not isinstance(campaign, dict) or not isinstance(campaign.get('static_observations', {}), dict):
         raise ValueError('Invalid campaign static-observation container')
+    analysis = analyze_captured_kit(case/'detonation'/'runs')
     campaign.setdefault('static_observations', {})['captured_kit'] = {
         'path': 'phishing_kit_analysis.json', 'status': analysis['status'],
         'verified': False, 'observation_count': len(analysis['observations'])}
+    atomic_json(case/'phishing_kit_analysis.json', analysis)
     atomic_json(case/'campaign_origin.json', campaign)
     return analysis
 

@@ -614,6 +614,13 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
     # Analyze received path for campaign origin
     campaign_origin = trace_campaign_origin(headers, hops)
     write_json(os.path.join(case_dir,"campaign_origin.json"), campaign_origin)
+
+    # Static capture accounting does not depend on endpoint/log extraction.
+    kit_dir = os.path.join(case_dir, "detonation", "runs")
+    if not no_egress and os.path.exists(kit_dir):
+        kit_analysis = publish_captured_kit_inventory(case_dir)
+        print(f"[kit] static inventory: {kit_analysis['status']}; "
+              f"{len(kit_analysis['observations'])} observations; risk unavailable")
     
     # Profile IP RDAP
     mark_stage('ip_enrichment')
@@ -670,13 +677,6 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
                         })
             write_json(os.path.join(case_dir,"c2_infrastructure.json"), c2_analysis)
             print(f"[osint] analyzed {len(c2_analysis)} infrastructure endpoints")
-
-            # Static observations from captured files do not establish C2 behavior.
-            kit_dir = os.path.join(case_dir, "detonation", "runs")
-            if os.path.exists(kit_dir):
-                kit_analysis = publish_captured_kit_inventory(case_dir)
-                print(f"[kit] static inventory: {kit_analysis['status']}; "
-                      f"{len(kit_analysis['observations'])} observations; risk unavailable")
 
             # 🚀 NUOVO: Integrazione Criminal Hunter per analisi infrastrutturale avanzata
             print("[criminal_hunter] starting advanced infrastructure analysis...")
