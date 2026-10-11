@@ -20,7 +20,9 @@ the value, geolocation, interaction label or attribution.
 `raw_storage` retains SQLite's returned value and storage type: TEXT uses the
 exact string, including whitespace and Unicode; SQL NULL has a null value;
 INTEGER retains the integer; BLOB uses reversible base64; REAL uses Python's
-reversible `float.hex()` representation, including infinities. This preserves
+reversible `float.hex()` representation, including infinities. Undecodable UTF-8
+TEXT uses reversible base64 with `type: text`, distinct from `type: blob`; no
+replacement characters or alternate JSON encoding are substituted. This preserves
 the returned SQLite cell, not original filesystem bytes, a database-page offset
 or a history of changes. No hash, origin or observation timestamp is invented.
 
@@ -46,6 +48,12 @@ still retained exactly as base64. Parsed values from ambiguous/non-finite JSON
 change to explicit fallback plus source/status. Damaged alert metadata no longer
 prevents other alerts and their source messages from being read.
 
+The JSON readers defer SQLite's implicit TEXT conversion for these columns, so
+invalid UTF-8 TEXT reaches the decoder and produces `invalid_encoding` instead
+of aborting `fetchall()`. Valid UTF-8 TEXT remains a string, BLOB remains BLOB,
+and TEXT corruption in non-JSON columns still raises an explicit SQLite error.
+General connections, writers and SQL JSON filters retain their prior behavior.
+
 Writers, schema/migration, filters, ordering, pagination, risk scoring and other
 production modules are unchanged. Existing consumers still receive their flat
 fields plus the additive evidence key. Current `monitor list` displays stored
@@ -56,25 +64,34 @@ database reader alone.
 
 ## Checks and remaining boundaries
 
-Ten new contracts use actual SQLite files/writers/readers under offline policy:
+Twelve new contracts use actual SQLite files/writers/readers under offline policy:
 exact source/Unicode/nested values across ten public query variants, distinctions
 among NULL/empty/JSON null/missing column, malformed alerts with valid neighbor
 rows, duplicate/escaped keys, nested non-finite/overflow, BLOBs, SQLite TEXT
 affinity and original numeric storage, all six named interaction JSON fields,
-and runtime depth failure. Sources/rows/database bytes are unchanged after
+runtime depth failure, and invalid UTF-8 TEXT inserted with SQLite `CAST` across
+all JSON columns, with a valid neighboring alert and strict serialization. The
+TEXT/BLOB distinction is checked against actual `typeof` and byte projections;
+non-JSON encoding failure remains explicit. Sources/rows/database bytes are unchanged after
 reads. Strict JSON serialization of the exercised records succeeds; arbitrary
 non-JSON fields such as a manually corrupted numeric confidence are not newly
 validated. The previous sixteen row/admission contracts remain in place; their
 named-storage comparisons exclude only the new envelope, which these dedicated
 contracts validate separately.
 
-On local Windows/Python 3.13, all twenty-six Sentinel contracts pass; the general
-suite passes 646 of 654 tests with eight platform exclusions. The seven-case
+On local Windows/Python 3.13, all twenty-eight Sentinel contracts pass; the general
+suite passes 648 of 656 tests with eight platform exclusions. The seven-case
 actual passive CLI list integration and existing original-EML CLI/HTTP no-egress
 regression pass, including query/evidence-reader admission, stopped-case exports
 and supervisor-crash recovery. A real rebuilt wheel matches metadata/entry
 points and all 90 package Python sources. These broader checks do not prove
 report fidelity, clean dependency installation or attribution accuracy.
+
+During the review fix, an initial concurrent suite run had one process-deadline
+test error: its child heartbeat was absent before the deadline. The unchanged
+test passed in the complete serial rerun (656 tests, eight exclusions). Both
+logs are retained; this is a scheduling observation, not a Sentinel decoding
+failure or a change to process supervision.
 
 The country filter and correlation SQL still use SQLite JSON functions before
 row decoding: malformed geolocation may fail the query, and duplicate-key SQL

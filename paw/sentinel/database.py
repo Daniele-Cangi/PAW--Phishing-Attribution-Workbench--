@@ -19,6 +19,10 @@ class _StoredJSONError(ValueError):
     """A syntactically accepted value is ambiguous or non-finite."""
 
 
+class _InvalidUTF8Text(bytes):
+    """Undecodable SQLite TEXT, distinct from a stored BLOB."""
+
+
 class CampaignDatabase:
     """SQLite database for managing monitored phishing campaigns."""
 
@@ -57,6 +61,30 @@ class CampaignDatabase:
                 Path(str(database) + suffix).exists() for suffix in ('-wal', '-shm', '-journal')):
             raise ValueError("Sentinel passive opening requires a stopped database without WAL/journal sidecars")
         return database.as_uri() + '?mode=ro'
+
+    @contextmanager
+    def _json_read_connection(self):
+        """Defer invalid JSON TEXT decoding while keeping other TEXT strict."""
+        json_columns = {'metadata', 'attacker_correlation', 'geolocation_data',
+                        'whois_data', 'related_ips', 'interaction_indicators'}
+
+        def decode_text(raw):
+            try:
+                return raw.decode('utf-8')
+            except UnicodeDecodeError:
+                return _InvalidUTF8Text(raw)
+
+        def named_row(cursor, values):
+            for column, value in zip(cursor.description, values):
+                if isinstance(value, _InvalidUTF8Text) and column[0] not in json_columns:
+                    raise sqlite3.OperationalError(
+                        f"Could not decode to UTF-8 column '{column[0]}'")
+            return sqlite3.Row(cursor, values)
+
+        with self.connection() as conn:
+            conn.text_factory = decode_text
+            conn.row_factory = named_row
+            yield conn
 
     def _init_db(self) -> None:
         """Initialize database tables."""
@@ -165,6 +193,9 @@ class CampaignDatabase:
     def _decode_json_field(self, raw, default):
         if raw is None:
             source = {'type': 'null', 'value': None}
+        elif isinstance(raw, _InvalidUTF8Text):
+            source = {'type': 'text', 'encoding': 'base64',
+                      'value': base64.b64encode(raw).decode('ascii')}
         elif isinstance(raw, str):
             source = {'type': 'text', 'value': raw}
         elif isinstance(raw, bytes):
@@ -195,7 +226,9 @@ class CampaignDatabase:
             return parsed
 
         try:
-            if raw is None:
+            if isinstance(raw, _InvalidUTF8Text):
+                status = 'invalid_encoding'
+            elif raw is None:
                 status = 'sql_null'
             elif raw == '' or raw == b'':
                 status = 'empty'
@@ -237,7 +270,7 @@ class CampaignDatabase:
 
     def get_campaign(self, campaign_id: str) -> Optional[Dict[str, Any]]:
         """Get campaign details by ID."""
-        with self.connection() as conn:
+        with self._json_read_connection() as conn:
             row = conn.execute("""
                 SELECT * FROM campaigns WHERE id = ?
             """, (campaign_id,)).fetchone()
@@ -261,7 +294,7 @@ class CampaignDatabase:
     def get_active_campaigns(self) -> List[Dict[str, Any]]:
         """Get all active campaigns."""
         campaigns = []
-        with self.connection() as conn:
+        with self._json_read_connection() as conn:
             rows = conn.execute("""
                 SELECT * FROM campaigns WHERE status = 'active'
             """).fetchall()
@@ -341,7 +374,7 @@ class CampaignDatabase:
     def get_recent_checks(self, campaign_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent checks for a campaign."""
         checks = []
-        with self.connection() as conn:
+        with self._json_read_connection() as conn:
             rows = conn.execute("""
                 SELECT * FROM checks WHERE campaign_id = ?
                 ORDER BY check_time DESC LIMIT ?
@@ -365,7 +398,7 @@ class CampaignDatabase:
     def get_unacknowledged_alerts(self) -> List[Dict[str, Any]]:
         """Get unacknowledged alerts."""
         alerts = []
-        with self.connection() as conn:
+        with self._json_read_connection() as conn:
             rows = conn.execute("""
                 SELECT * FROM alerts WHERE acknowledged = 0
                 ORDER BY alert_time DESC
@@ -433,8 +466,7 @@ class CampaignDatabase:
 
     def get_victim_intelligence(self, victim_id: int = None, victim_ip: str = None) -> List[Dict[str, Any]]:
         """Get victim intelligence data."""
-        with self.connection() as conn:
-            conn.row_factory = sqlite3.Row
+        with self._json_read_connection() as conn:
             if victim_id:
                 rows = conn.execute("""
                     SELECT * FROM victim_intelligence WHERE id = ?
@@ -455,8 +487,7 @@ class CampaignDatabase:
 
     def get_unanalyzed_victims(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get victims that haven't been fully analyzed yet."""
-        with self.connection() as conn:
-            conn.row_factory = sqlite3.Row
+        with self._json_read_connection() as conn:
             rows = conn.execute("""
                 SELECT * FROM victim_intelligence
                 WHERE analyzed_status IN ('captured', 'analyzing')
@@ -592,8 +623,7 @@ class CampaignDatabase:
 
     def get_victims_by_risk_score(self, min_score: int = 5) -> List[Dict[str, Any]]:
         """Get victims with risk score above threshold."""
-        with self.connection() as conn:
-            conn.row_factory = sqlite3.Row
+        with self._json_read_connection() as conn:
             rows = conn.execute("""
                 SELECT * FROM victim_intelligence
                 WHERE risk_score >= ?
@@ -604,8 +634,7 @@ class CampaignDatabase:
 
     def get_victims_by_country(self, country: str) -> List[Dict[str, Any]]:
         """Get victims from specific country."""
-        with self.connection() as conn:
-            conn.row_factory = sqlite3.Row
+        with self._json_read_connection() as conn:
             rows = conn.execute("""
                 SELECT * FROM victim_intelligence
                 WHERE json_extract(geolocation_data, '$.country') = ?

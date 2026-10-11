@@ -91,6 +91,60 @@ class SentinelJSONEvidence(unittest.TestCase):
         self.assertEqual(len(reader.get_unacknowledged_alerts()), 2)
         self.assertEqual(Path(writer.db_path).read_bytes(), before)
 
+    def test_invalid_utf8_text_retains_text_type_and_valid_neighbor_alert(self):
+        writer, reader = self.seed()
+        writer.record_alert(self.campaign, 'second-stored', 'second message', metadata={'é': 'retained'})
+        for raw in (b'\x80', b'{"x":"\xff"}', '{"é":1}'.encode('utf-16')):
+            with self.subTest(raw=raw):
+                with writer.connection() as conn:
+                    for table in ('campaigns', 'checks', 'alerts', 'victim_intelligence'):
+                        where = " WHERE message != 'second message'" if table == 'alerts' else ''
+                        conn.execute(f'UPDATE {table} SET metadata=CAST(? AS TEXT)' + where, (raw,))
+                        stored = conn.execute(f'SELECT typeof(metadata), CAST(metadata AS BLOB) FROM {table}' + where).fetchone()
+                        self.assertEqual(stored, ('text', raw))
+                before = Path(writer.db_path).read_bytes()
+                records = self.records(reader)
+                self.assertEqual(len(records), 11)
+                for record in records:
+                    if record.get('message') == 'second message':
+                        self.assertEqual(record['metadata'], {'é': 'retained'})
+                        self.assertEqual(self.evidence(record)['status'], 'decoded')
+                    else:
+                        self.assertEqual(record['metadata'], {})
+                        self.assertEqual(self.evidence(record), {
+                            'status': 'invalid_encoding', 'raw_storage': {
+                                'type': 'text', 'encoding': 'base64',
+                                'value': base64.b64encode(raw).decode('ascii')},
+                            'default_applied': True, 'verified': False})
+                json.dumps(records, allow_nan=False).encode('utf-8')
+                self.assertEqual(Path(writer.db_path).read_bytes(), before)
+
+    def test_invalid_utf8_in_other_json_columns_and_non_json_failure_boundary(self):
+        writer, reader = self.seed()
+        raw = b'\x80'
+        with writer.connection() as conn:
+            for field in source_rows.JSON_DEFAULTS:
+                conn.execute(f'UPDATE victim_intelligence SET {field}=CAST(? AS TEXT)', (raw,))
+        before = Path(writer.db_path).read_bytes()
+        for record in (reader.get_victim_intelligence(victim_id=self.identifier)[0],
+                       reader.get_unanalyzed_victims()[0], reader.get_victims_by_risk_score(5)[0]):
+            for field, default in source_rows.JSON_DEFAULTS.items():
+                self.assertEqual(record[field], default)
+                result = self.evidence(record, field)
+                self.assertEqual(result['status'], 'invalid_encoding')
+                self.assertEqual(result['raw_storage']['type'], 'text')
+                self.assertEqual(base64.b64decode(result['raw_storage']['value']), raw)
+            json.dumps(record, allow_nan=False).encode('utf-8')
+        self.assertEqual(Path(writer.db_path).read_bytes(), before)
+        # Only JSON columns receive the new decoding evidence. Do not leak a
+        # private bytes marker into an unrelated compatibility field.
+        with writer.connection() as conn:
+            conn.execute('UPDATE alerts SET message=CAST(? AS TEXT)', (raw,))
+        before = Path(writer.db_path).read_bytes()
+        with self.assertRaises(sqlite3.OperationalError):
+            reader.get_unacknowledged_alerts()
+        self.assertEqual(Path(writer.db_path).read_bytes(), before)
+
     def test_duplicate_keys_at_any_depth_are_ambiguous_instead_of_last_value_wins(self):
         writer, reader = self.seed()
         for raw in ('{"country":"first","country":"last"}',
