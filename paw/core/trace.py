@@ -9,7 +9,7 @@ from .header_inventory import inventory_headers, inventory_coverage
 from .mime_header_inventory import inventory_mime_headers, mime_header_coverage
 from .mime_body_evidence import preserve_body_parts, body_evidence_coverage
 from .evidence import seal_case
-from .runtime import mark_stage, read_progress
+from .runtime import mark_stage, read_progress, atomic_json
 from .received import normalize_received
 from .auth import infer_alignment, authentication_report
 from .dkim_offline import verify_dkim_offline
@@ -512,7 +512,7 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
     from .url_sources import inventory_url_sources, url_source_coverage
     url_source_inventory = inventory_url_sources(mime_result, body_inventory, msg, headers,
                                                 header_inventory, url_evidence)
-    write_json(os.path.join(case_dir, 'url_source_inventory.json'), url_source_inventory)
+    atomic_json(os.path.join(case_dir, 'url_source_inventory.json'), url_source_inventory)
     stage_status = {'detonation': {'status': 'skipped', 'reason': 'no-egress' if no_egress else 'No URLs'},
                     'network_enrichment': {'status': 'skipped' if no_egress else 'not_evaluated', 'reason': 'no-egress' if no_egress else 'Individual lookup outcomes apply'},
                     'attachment_metadata': {'status': 'not_evaluated'}}

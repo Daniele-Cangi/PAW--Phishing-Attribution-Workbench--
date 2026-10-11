@@ -141,8 +141,13 @@ views in `headers.json`, their original parser field indexes and the availabilit
 of the corresponding `header_inventory.json` field. The full source EML hash
 binds the catalog to the existing body/header inventories; inconsistent source
 bindings are rejected. The catalog is written after `headers.json` and the other
-referenced artifacts. An interruption before catalog publication leaves no source
-links; an interruption after its write retains the referenced files before partial
+referenced artifacts. The catalog uses the existing `atomic_json` writer:
+serialization and a temporary sibling write precede atomic replacement of the
+final path. An interruption before replacement leaves no published catalog;
+after replacement it is complete. A killed worker may leave a temporary fragment
+as raw partial evidence; it is not exposed as the published catalog. No claim of
+power-loss durability is made. An interruption after publication retains the
+referenced files before partial
 sealing, which still requires confirmed worker-tree shutdown.
 The API exposes both inventories, seals/ZIPs include
 the artifact, and the technical report and coverage reference it. Historical
@@ -195,9 +200,12 @@ invalid/unresolved URLs, HTML entities/split visible text/comments/scripts,
 independent parser state, charset/header limits, attached scope, missing source
 matches, exact prefix accounting, input binding and no-egress. Nine actual full
 CLI cases and five loopback HTTP workers independently check source contexts,
-files/hashes, API/ZIP, coverage and seals. Two additional contracts pause a real
-no-egress trace after writing headers or the catalog, cancel the supervised
-process tree and check the resulting sealed partial cases: no early inventory,
-and no dangling catalog references after publication. The actual limit fixture has 100 URL
+files/hashes, API/ZIP, coverage and seals. Five additional contracts pause a real
+no-egress trace after writing headers, during catalog serialization, after a
+partial temporary write, before atomic replacement, or after publication.
+They cancel the supervised process tree and check the sealed partial cases:
+no premature or malformed published catalog, and no dangling references after
+publication. Interrupted temporary bytes remain stable raw evidence.
+The actual limit fixture has 100 URL
 records in 50 independent text parts: 5,000 links, 4,096 retained and 904 omitted.
 Constructed inputs test linkage regressions, not classification accuracy.

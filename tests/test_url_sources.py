@@ -3,6 +3,7 @@ import base64
 import asyncio
 import copy
 import hashlib
+import json
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -192,21 +193,45 @@ class URLSourceTests(unittest.TestCase):
 
 class URLSourceInterruptionTests(unittest.IsolatedAsyncioTestCase):
     async def interrupt_after(self, artifact):
-        # This hook only pauses after a real write from the real guarded trace.
-        # It supplies no analysis output. The supervisor kills the actual tree.
+        # Pause real serialization/writes/publication in the guarded trace.
+        # These hooks supply no analysis output; the supervisor kills the tree.
         script='''from paw.core.runtime import wait_for_gate, mark_stage
 wait_for_gate()
-import time, sys
+import time, sys, json
 from pathlib import Path
 import paw.core.trace as trace
 write=trace.write_json
+publish=trace.atomic_json
+write_text=Path.write_text
+encode=json.JSONEncoder.iterencode
+mode=sys.argv[1]
+def pause():
+    mark_stage('url_source_pause')
+    Path('ready').touch()
+    while True: time.sleep(.1)
 def observe(path,value):
     write(path,value)
-    if Path(path).name==sys.argv[1]:
-        mark_stage('url_source_pause')
-        Path('ready').touch()
-        while True: time.sleep(.1)
+    if Path(path).name==mode: pause()
+def observe_publish(path,value):
+    publish(path,value)
+    if Path(path).name==mode: pause()
+def observe_encode(self,value,_one_shot=False):
+    for chunk in encode(self,value,_one_shot):
+        yield chunk
+        if mode=='catalog_encoding' and isinstance(value,dict) and value.get('scope')=='existing_url_records_in_supported_outer_message_views': pause()
+def observe_text(path,value,*args,**kwargs):
+    temporary=path.name.startswith('url_source_inventory.json.') and path.suffix=='.tmp'
+    if temporary and mode=='catalog_partial_temporary':
+        with path.open('w',encoding='utf-8') as stream:
+            stream.write(value[:32]);stream.flush()
+        pause()
+    result=write_text(path,value,*args,**kwargs)
+    if temporary and mode=='catalog_before_replace': pause()
+    return result
 trace.write_json=observe
+trace.atomic_json=observe_publish
+json.JSONEncoder.iterencode=observe_encode
+Path.write_text=observe_text
 trace.trace_one('input.eml','en',False,False,False,True)
 '''
         with tempfile.TemporaryDirectory() as temp:
@@ -227,12 +252,27 @@ trace.trace_one('input.eml','en',False,False,False,True)
             self.assertEqual(len(cases),1);self.assertEqual(cases[0]['integrity'],'sealed_partial')
             case=root/'cases'/cases[0]['case_id'];self.assertTrue(verify_case(case))
             self.assertEqual((case/'input.eml').read_bytes(),raw)
-            import json
             self.assertTrue(json.loads((case/'manifest.json').read_text())['policy']['no_egress'])
-            if artifact=='headers.json':
+            if artifact!='url_source_inventory.json':
                 self.assertFalse((case/'url_source_inventory.json').exists())
+                for name in ('headers.json','url_evidence.json','mime_body_evidence.json','header_inventory.json'):
+                    json.loads((case/name).read_text())
+                fragments=list(case.glob('url_source_inventory.json.*.tmp'))
+                if artifact in {'catalog_partial_temporary','catalog_before_replace'}:
+                    self.assertEqual(len(fragments),1)
+                    data=fragments[0].read_bytes()
+                    if artifact=='catalog_partial_temporary':
+                        self.assertGreater(len(data),0)
+                        with self.assertRaises(json.JSONDecodeError):json.loads(data)
+                    else:
+                        self.assertEqual(json.loads(data)['scope'],'existing_url_records_in_supported_outer_message_views')
+                    await asyncio.sleep(.15)
+                    self.assertEqual(fragments[0].read_bytes(),data)
+                    self.assertTrue(verify_case(case))
+                else:self.assertEqual(fragments,[])
                 return
             inventory=json.loads((case/'url_source_inventory.json').read_text())
+            self.assertEqual(list(case.glob('url_source_inventory.json.*.tmp')),[])
             references={'input.eml',inventory['url_evidence_artifact']}
             for source in inventory['sources']:
                 references.add(source['artifact'])
@@ -249,6 +289,15 @@ trace.trace_one('input.eml','en',False,False,False,True)
 
     async def test_interruption_after_inventory_retains_all_referenced_sources(self):
         await self.interrupt_after('url_source_inventory.json')
+
+    async def test_interruption_during_catalog_encoding_publishes_no_catalog(self):
+        await self.interrupt_after('catalog_encoding')
+
+    async def test_interruption_during_temporary_write_publishes_no_catalog(self):
+        await self.interrupt_after('catalog_partial_temporary')
+
+    async def test_interruption_before_atomic_replace_publishes_no_catalog(self):
+        await self.interrupt_after('catalog_before_replace')
 
 
 if __name__=='__main__':unittest.main()

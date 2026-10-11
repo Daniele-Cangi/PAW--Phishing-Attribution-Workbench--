@@ -22,7 +22,10 @@ class RuntimeContracts(unittest.IsolatedAsyncioTestCase):
             root = Path(temp)
             child = "import time; from pathlib import Path; p=Path('heartbeat');\nwhile True: p.write_text(str(time.time())); time.sleep(.03)"
             code = 'import subprocess, sys, time\nsubprocess.Popen([sys.executable,"-c",'+repr(child)+'])\nmark_stage("blocked")\ntime.sleep(30)'
-            outcome = await self.run_process(code, root, RunLimits(wall_seconds=1, stage_seconds=10))
+            # Windows cold startup can consume one second before the child
+            # writes; keep a bounded overall deadline that exercises its writer.
+            wall_seconds = 3 if os.name == 'nt' else 1
+            outcome = await self.run_process(code, root, RunLimits(wall_seconds=wall_seconds, stage_seconds=10))
             self.assertEqual(outcome['status'],'timed_out')
             self.assertLess(outcome['elapsed_seconds'],5)
             before = (root/'heartbeat').read_bytes()
