@@ -221,6 +221,9 @@ jobs:
       - name: Verify supplied HTML form provenance, bounds and unverified matrix consumption
         run: python -m unittest discover -s tests -p 'test_form_observations.py' -v
 
+      - name: Verify supplied tracker-pattern and log provenance, shared bounds and matrix consumption
+        run: python -m unittest discover -s tests -p 'test_tracker_observations.py' -v
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

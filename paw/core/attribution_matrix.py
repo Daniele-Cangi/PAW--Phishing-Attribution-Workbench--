@@ -299,6 +299,22 @@ class AttributionMatrix:
         }
 
         if source_name == 'trackers':
+            if source_data.get('schema_version') == 2:
+                observations = source_data.get('observations', [])
+                patterns = sum(row.get('context') in {'registry_pattern', 'hostname_registry_match'} for row in observations)
+                log_literals = len(observations) - patterns
+                summary.update(evidence_count=len(observations),
+                    evidence_types=(['unverified_tracker_pattern'] if patterns else [])
+                                   + (['supplied_log_literal'] if log_literals else []),
+                    confidence_level='unavailable', verified=False,
+                    source_status=source_data.get('status', 'unavailable'),
+                    observation_counts={'registry_patterns': patterns, 'log_literals': log_literals},
+                    sources=[{'index': s.get('index'), 'input_index': s.get('input_index'), 'kind': s.get('kind'),
+                              'status': s.get('status'), 'sha256': s.get('sha256'),
+                              'bytes': s.get('bytes'), 'reason': s.get('reason'),
+                              'hash_scope': s.get('hash_scope')} for s in source_data.get('sources', [])],
+                    reason='Supplied strings and log records do not verify tracking or attribution')
+                return summary
             trackers = source_data.get('trackers', [])
             summary['evidence_count'] = len(trackers)
             summary['evidence_types'] = ['analytics_tracking']
