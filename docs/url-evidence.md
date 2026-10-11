@@ -140,16 +140,33 @@ paths/hashes/status. Selected header sources reference the first Subject/From
 views in `headers.json`, their original parser field indexes and the availability
 of the corresponding `header_inventory.json` field. The full source EML hash
 binds the catalog to the existing body/header inventories; inconsistent source
-bindings are rejected. The API exposes both inventories, seals/ZIPs include
+bindings are rejected. The catalog is written after `headers.json` and the other
+referenced artifacts. An interruption before catalog publication leaves no source
+links; an interruption after its write retains the referenced files before partial
+sealing, which still requires confirmed worker-tree shutdown.
+The API exposes both inventories, seals/ZIPs include
 the artifact, and the technical report and coverage reference it. Historical
 cases without it remain readable.
 
 Links mean exact candidate presence in a supported representation, once per
 source and URL record. Repeated occurrences within the same part, HTML attribute
 versus visible-text positions and original byte offsets are not inventoried.
-HTML character references/visible text follow the existing parser semantics;
-each document has fresh state. Script/style text, comments and attributes follow
-the already supported candidate extraction. Derived records match their original
+HTML sources are labeled `html_parser_derived_url_candidate_views`, with a
+separate `derived_from` descriptor containing the persisted
+`per_part_charset_decoded_text` input path/hash/status. The input file can contain
+`&amp;` or markup splitting a URL; the linked candidate need not occur literally
+in that file. Derived candidate views are not persisted, as explicitly recorded
+by `derivation.persisted=false`.
+
+The derivation method `paw_html_url_candidate_views_v1` re-parses each part using
+fresh `HtmlEvidenceParser` state and `extract_mime_url_candidates`: character
+references in attributes/visible text are decoded once, visible text is joined
+across markup, supported attribute values are inspected, and script/style text
+and comments follow the existing literal candidate rules. The MIME observer's
+supported URL attributes and HTTP strings in joined visible text are included
+too. No JavaScript is executed. This describes the union of candidate views,
+not an exact attribute/text position or a literal substring of parser input.
+Derived records match their original
 `source_url`, so colliding recovered destinations still link to their respective
 original candidates. Invalid and unresolved records can also have known sources;
 locating their sources does not make them valid targets.
@@ -173,11 +190,14 @@ partial linkage. Missing source matches are never invented. The lookup adds no
 external access or new decoder, and uses the same bounded source views as the
 analysis worker.
 
-Ten contracts cover repeated parts/header sources, candidate collisions,
+Eleven extraction contracts cover repeated parts/header sources, candidate collisions,
 invalid/unresolved URLs, HTML entities/split visible text/comments/scripts,
 independent parser state, charset/header limits, attached scope, missing source
 matches, exact prefix accounting, input binding and no-egress. Nine actual full
 CLI cases and five loopback HTTP workers independently check source contexts,
-files/hashes, API/ZIP, coverage and seals. The actual limit fixture has 100 URL
+files/hashes, API/ZIP, coverage and seals. Two additional contracts pause a real
+no-egress trace after writing headers or the catalog, cancel the supervised
+process tree and check the resulting sealed partial cases: no early inventory,
+and no dangling catalog references after publication. The actual limit fixture has 100 URL
 records in 50 independent text parts: 5,000 links, 4,096 retained and 904 omitted.
 Constructed inputs test linkage regressions, not classification accuracy.

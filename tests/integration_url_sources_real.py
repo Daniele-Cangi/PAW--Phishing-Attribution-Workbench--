@@ -73,10 +73,17 @@ def check_case(case,raw,expected):
         assert source['source_index']==index
         if source['kind']=='mime_body':
             body=next(b for b in bodies if b['part_id']==source['part_id'])
-            assert source['text_status']==body['text_status'] and source['text_path']==body['text_path']
-            assert source['text_sha256']==body['text_sha256']
-            if source['text_status']=='captured':
-                assert hashlib.sha256((case/source['text_path']).read_bytes()).hexdigest()==source['text_sha256']
+            text_source=source.get('derived_from',source)
+            assert text_source['representation']=='per_part_charset_decoded_text'
+            assert text_source['text_status']==body['text_status'] and text_source['text_path']==body['text_path']
+            assert text_source['text_sha256']==body['text_sha256']
+            if body['declared_mime']=='text/html':
+                assert source['representation']=='html_parser_derived_url_candidate_views'
+                assert source['derivation']=={'method':'paw_html_url_candidate_views_v1','persisted':False}
+                assert 'text_path' not in source
+            else:assert 'derived_from' not in source
+            if text_source['text_status']=='captured':
+                assert hashlib.sha256((case/text_source['text_path']).read_bytes()).hexdigest()==text_source['text_sha256']
         else:
             assert source['part_id']=='0' and source['header_index']==first[source['field']]
             fields=read(case/'header_inventory.json')['fields']
@@ -164,7 +171,9 @@ def main():
                         assert json.loads(archive.read('url_source_inventory.json'))==inventory
                         assert json.loads(archive.read('url_evidence.json'))==evidence
                         for source in inventory['sources']:
-                            if source.get('text_path'):assert archive.read(source['text_path'])==(case/source['text_path']).read_bytes()
+                            assert archive.read(source['artifact'])==(case/source['artifact']).read_bytes()
+                            text_source=source.get('derived_from',source)
+                            if text_source.get('text_path'):assert archive.read(text_source['text_path'])==(case/text_source['text_path']).read_bytes()
             finally:
                 server.terminate()
                 try:server.wait(timeout=15)

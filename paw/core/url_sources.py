@@ -56,11 +56,19 @@ def inventory_url_sources(mime_result, body_inventory, message, headers,
             candidates += visible.urls + extract_urls(''.join(visible.text))
         else:
             candidates = extract_text_url_candidates(value) + extract_urls(value)
+        text_source = {'representation':'per_part_charset_decoded_text',
+                       'text_status':field['text_status'], 'text_path':field['text_path'],
+                       'text_sha256':field['text_sha256']}
+        source_view = text_source
+        if content_type == 'text/html':
+            # The persisted text is parser input, not a literal occurrence of
+            # entity-decoded attributes or visible text joined across markup.
+            source_view = {'representation':'html_parser_derived_url_candidate_views',
+                           'derived_from':text_source,
+                           'derivation':{'method':'paw_html_url_candidate_views_v1',
+                                         'persisted':False}}
         add({'kind':'mime_body', 'part_id':body['part_id'],
-             'artifact':'mime_body_evidence.json',
-             'representation':'per_part_charset_decoded_text',
-             'text_status':field['text_status'], 'text_path':field['text_path'],
-             'text_sha256':field['text_sha256']}, candidates)
+             'artifact':'mime_body_evidence.json', **source_view}, candidates)
 
     retained_headers = {field['header_index']:field for field in header_inventory['fields']}
     selected = set()
@@ -97,7 +105,7 @@ def inventory_url_sources(mime_result, body_inventory, message, headers,
         'unmapped_evidence_indexes':unmapped,
         'omitted_unmapped_index_count':unmapped_count-len(unmapped), 'issues':issues,
         'limits':{'max_links':max_links,'max_unmapped_indexes':max_unmapped},
-        'limitation':'Exact candidate presence per decoded body or first selected Subject/From view; not occurrence counts, raw byte offsets, all headers, attachments, execution or authenticity. URL records and targets are unchanged.'}
+        'limitation':'Exact candidate presence per decoded text, HTML parser-derived candidate views or first selected Subject/From view. HTML text paths/hashes identify parser input, not literal candidate occurrences; derived views are not persisted. Not occurrence counts, raw byte offsets, all headers, attachments, execution or authenticity. URL records and targets are unchanged.'}
 
 
 def url_source_coverage(inventory):

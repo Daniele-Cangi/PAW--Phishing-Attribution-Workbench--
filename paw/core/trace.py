@@ -465,10 +465,6 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
     headers['urls'] = urls
     headers['url_evidence'] = url_evidence
     write_json(os.path.join(case_dir, 'url_evidence.json'), url_evidence)
-    from .url_sources import inventory_url_sources, url_source_coverage
-    url_source_inventory = inventory_url_sources(mime_result, body_inventory, msg, headers,
-                                                header_inventory, url_evidence)
-    write_json(os.path.join(case_dir, 'url_source_inventory.json'), url_source_inventory)
     
     # Analyze content for phishing indicators
     subject = headers.get("subject", "")
@@ -512,6 +508,11 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
         headers["domain_analysis"] = domain_analysis
     
     write_json(os.path.join(case_dir,"headers.json"), {key: value for key, value in headers.items() if key != "_msg_obj"})
+    # Publish source links only after all referenced source artifacts exist.
+    from .url_sources import inventory_url_sources, url_source_coverage
+    url_source_inventory = inventory_url_sources(mime_result, body_inventory, msg, headers,
+                                                header_inventory, url_evidence)
+    write_json(os.path.join(case_dir, 'url_source_inventory.json'), url_source_inventory)
     stage_status = {'detonation': {'status': 'skipped', 'reason': 'no-egress' if no_egress else 'No URLs'},
                     'network_enrichment': {'status': 'skipped' if no_egress else 'not_evaluated', 'reason': 'no-egress' if no_egress else 'Individual lookup outcomes apply'},
                     'attachment_metadata': {'status': 'not_evaluated'}}

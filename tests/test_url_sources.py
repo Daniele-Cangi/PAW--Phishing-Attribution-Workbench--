@@ -1,12 +1,15 @@
 """Per-source links to existing URL records, with explicit claim/limit boundaries."""
 import base64
+import asyncio
 import copy
+import hashlib
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
 from pathlib import Path
 import tempfile
 import unittest
+import sys
 
 from paw.core.header_inventory import inventory_headers, HeaderInventoryLimits
 from paw.core.mime_analysis import analyze_mime, extract_urls
@@ -15,6 +18,8 @@ from paw.core.network_policy import offline_policy, violations
 from paw.core.parser_mail import parse_message_bytes, parse_eml_bytes
 from paw.core.url_evidence import build_url_evidence, extract_mime_url_candidates
 from paw.core.url_sources import inventory_url_sources, url_source_coverage
+from paw.core.runtime import supervise, RunLimits, preserve_interrupted
+from paw.core.verify import verify_case
 from paw.deobfuscate.url import URLDeobfuscator
 
 
@@ -92,7 +97,29 @@ class URLSourceTests(unittest.TestCase):
                 inventory,evidence,_=run(value.as_bytes())
                 self.assertEqual(inventory['unmapped_evidence_count'],0)
                 self.assertTrue(all(contexts(inventory,i)=={('mime_body','0',None)} for i in range(len(evidence))))
+                source=inventory['sources'][0]
+                self.assertEqual(source['representation'],'html_parser_derived_url_candidate_views')
+                self.assertEqual(source['derivation'],{'method':'paw_html_url_candidate_views_v1','persisted':False})
+                self.assertEqual(source['derived_from']['representation'],'per_part_charset_decoded_text')
+                self.assertNotIn('text_path',source)
                 if 'xmlns' in body:self.assertEqual(evidence,[])
+
+    def test_html_parser_input_hash_is_separate_from_nonliteral_candidates(self):
+        markup='<a href="https://entity.invalid/?x=1&amp;y=2">go</a><p>https://split.invalid/<b>tail</b></p>'
+        value=EmailMessage(policy=policy.SMTP);value.set_content(markup,subtype='html')
+        raw=value.as_bytes();msg=parse_message_bytes(raw);mime=analyze_mime(msg)
+        inventory,evidence,_=run(raw)
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);body=preserve_body_parts(mime,raw,root/'mime_body')
+            source=inventory['sources'][0]['derived_from']
+            data=(root/source['text_path']).read_bytes()
+            self.assertEqual(source['text_sha256'],hashlib.sha256(data).hexdigest())
+            self.assertEqual(source['text_sha256'],body['parts'][0]['text_sha256'])
+            self.assertEqual({r['url'] for r in evidence},{'https://entity.invalid/?x=1&y=2','https://split.invalid/tail'})
+            self.assertTrue(all(r['url'] not in data.decode('utf-8') for r in evidence))
+        plain,_,_=run(b'\r\nhttps://plain.invalid/')
+        self.assertEqual(plain['sources'][0]['representation'],'per_part_charset_decoded_text')
+        self.assertNotIn('derived_from',plain['sources'][0])
 
     def test_plain_js_independent_html_state_and_attached_scope(self):
         value=EmailMessage(policy=policy.SMTP);value.set_content('<script>unclosed',subtype='html')
@@ -161,6 +188,67 @@ class URLSourceTests(unittest.TestCase):
         self.assertEqual(coverage['artifact'],'url_source_inventory.json')
         for key in ('status','source_count','total_link_count','omitted_link_count','unmapped_evidence_count'):
             self.assertEqual(coverage[key],inventory[key])
+
+
+class URLSourceInterruptionTests(unittest.IsolatedAsyncioTestCase):
+    async def interrupt_after(self, artifact):
+        # This hook only pauses after a real write from the real guarded trace.
+        # It supplies no analysis output. The supervisor kills the actual tree.
+        script='''from paw.core.runtime import wait_for_gate, mark_stage
+wait_for_gate()
+import time, sys
+from pathlib import Path
+import paw.core.trace as trace
+write=trace.write_json
+def observe(path,value):
+    write(path,value)
+    if Path(path).name==sys.argv[1]:
+        mark_stage('url_source_pause')
+        Path('ready').touch()
+        while True: time.sleep(.1)
+trace.write_json=observe
+trace.trace_one('input.eml','en',False,False,False,True)
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);raw=message().as_bytes();(root/'input.eml').write_bytes(raw)
+            control=root/'control';cancel=asyncio.Event()
+            task=asyncio.create_task(supervise([sys.executable,'-X','utf8','-c',script,artifact],
+                cwd=root,control=control,limits=RunLimits(wall_seconds=30,stage_seconds=20),
+                cancel=cancel,env={'PYTHONPATH':str(Path(__file__).resolve().parents[1]),'PYTHONDONTWRITEBYTECODE':'1'}))
+            try:
+                end=asyncio.get_running_loop().time()+25
+                while not (root/'ready').exists() and not task.done() and asyncio.get_running_loop().time()<end:
+                    await asyncio.sleep(.05)
+            finally:
+                cancel.set();outcome=await task
+            self.assertTrue((root/'ready').exists(),(control/'worker.log').read_text())
+            self.assertEqual(outcome['status'],'cancelled');self.assertTrue(outcome['tree_stopped'])
+            cases=preserve_interrupted(root,control,outcome['status'],outcome['error'])
+            self.assertEqual(len(cases),1);self.assertEqual(cases[0]['integrity'],'sealed_partial')
+            case=root/'cases'/cases[0]['case_id'];self.assertTrue(verify_case(case))
+            self.assertEqual((case/'input.eml').read_bytes(),raw)
+            import json
+            self.assertTrue(json.loads((case/'manifest.json').read_text())['policy']['no_egress'])
+            if artifact=='headers.json':
+                self.assertFalse((case/'url_source_inventory.json').exists())
+                return
+            inventory=json.loads((case/'url_source_inventory.json').read_text())
+            references={'input.eml',inventory['url_evidence_artifact']}
+            for source in inventory['sources']:
+                references.add(source['artifact'])
+                if source.get('header_inventory_artifact'):references.add(source['header_inventory_artifact'])
+                text_source=source.get('derived_from',source)
+                if text_source.get('text_path'):references.add(text_source['text_path'])
+            before={name:(case/name).read_bytes() for name in references}
+            await asyncio.sleep(.15)
+            self.assertEqual(before,{name:(case/name).read_bytes() for name in references})
+            self.assertTrue(verify_case(case))
+
+    async def test_interruption_before_inventory_publishes_no_links(self):
+        await self.interrupt_after('headers.json')
+
+    async def test_interruption_after_inventory_retains_all_referenced_sources(self):
+        await self.interrupt_after('url_source_inventory.json')
 
 
 if __name__=='__main__':unittest.main()
