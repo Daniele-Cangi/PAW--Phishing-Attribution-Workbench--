@@ -227,6 +227,9 @@ jobs:
       - name: Verify passive Received descriptions and unavailable header-forgery assessment
         run: python -m unittest discover -s tests -p 'test_header_forgery_contracts.py' -v
 
+      - name: Verify actual Sentinel SQLite rows across fresh and partial migrations
+        run: python -m unittest discover -s tests -p 'test_sentinel_database_rows.py' -v
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5
