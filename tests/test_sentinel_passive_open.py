@@ -20,6 +20,7 @@ class SentinelPassiveOpen(unittest.TestCase):
     readers = source_rows.SentinelDatabaseRows.readers
     stored_row = source_rows.SentinelDatabaseRows.stored_row
     expected_row = source_rows.SentinelDatabaseRows.expected_row
+    assert_source_records = source_rows.SentinelDatabaseRows.assert_source_records
 
     def test_missing_database_and_parent_are_not_created(self):
         for path in (self.root / 'missing.db', self.root / 'absent' / 'missing.db'):
@@ -39,7 +40,7 @@ class SentinelPassiveOpen(unittest.TestCase):
         reader = CampaignDatabase(writer.db_path, read_only=True)
         expected = self.expected_row(self.stored_row(writer, identifier))
         for records in self.readers(reader, identifier).values():
-            self.assertEqual(records, [expected])
+            self.assert_source_records(records, [expected])
         self.assertEqual(reader.get_campaign(campaign), writer.get_campaign(campaign))
         self.assertEqual(reader.get_active_campaigns(), writer.get_active_campaigns())
         self.assertEqual(reader.get_recent_checks(campaign), writer.get_recent_checks(campaign))
@@ -84,7 +85,7 @@ class SentinelPassiveOpen(unittest.TestCase):
                         if key not in expected:
                             expected[key] = None
                     for records in self.readers(reader, 1).values():
-                        self.assertEqual(records, [expected])
+                        self.assert_source_records(records, [expected])
                     with reader.connection() as conn:
                         tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
                     self.assertNotIn('campaigns', tables)

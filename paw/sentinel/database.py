@@ -3,14 +3,20 @@
 Database management for Sentinel monitoring campaigns.
 """
 import sqlite3
+import base64
 from contextlib import contextmanager, closing
 import json
+import math
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from ..util.fsutil import ensure_dir
 from ..util.timeutil import utc_now_iso
+
+
+class _StoredJSONError(ValueError):
+    """A syntactically accepted value is ambiguous or non-finite."""
 
 
 class CampaignDatabase:
@@ -143,14 +149,71 @@ class CampaignDatabase:
         if 'interaction_indicators' not in columns:
             conn.execute("ALTER TABLE victim_intelligence ADD COLUMN interaction_indicators TEXT")
 
-    def _safe_load_json(self, s: str, default):
-        """Safely load JSON from a string field; return default on failure or empty input."""
+    def _decode_record_json(self, record: Dict[str, Any], defaults: Dict[str, Any], missing=()):
+        """Keep typed stored source and decode outcome beside compatibility values."""
+        fields = {}
+        for field, default in defaults.items():
+            if field in missing:
+                record[field] = None
+                fields[field] = {'status': 'missing_column', 'raw_storage': None,
+                                 'default_applied': False, 'verified': False}
+            else:
+                record[field], fields[field] = self._decode_json_field(record[field], default)
+        record['json_evidence'] = {'schema_version': 1, 'fields': fields}
+        return record
+
+    def _decode_json_field(self, raw, default):
+        if raw is None:
+            source = {'type': 'null', 'value': None}
+        elif isinstance(raw, str):
+            source = {'type': 'text', 'value': raw}
+        elif isinstance(raw, bytes):
+            source = {'type': 'blob', 'encoding': 'base64',
+                      'value': base64.b64encode(raw).decode('ascii')}
+        elif isinstance(raw, int):
+            source = {'type': 'integer', 'value': raw}
+        else:  # SQLite's remaining scalar storage type is REAL.
+            source = {'type': 'real', 'encoding': 'float_hex', 'value': raw.hex()}
+        evidence = {'status': 'decoded', 'raw_storage': source,
+                    'default_applied': False, 'verified': False}
+
+        def unique_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise _StoredJSONError('duplicate_keys')
+                result[key] = value
+            return result
+
+        def reject_constant(value):
+            raise _StoredJSONError('non_finite_number')
+
+        def finite_float(value):
+            parsed = float(value)
+            if not math.isfinite(parsed):
+                raise _StoredJSONError('non_finite_number')
+            return parsed
+
         try:
-            if not s:
-                return default
-            return json.loads(s)
-        except Exception:
-            return default
+            if raw is None:
+                status = 'sql_null'
+            elif raw == '' or raw == b'':
+                status = 'empty'
+            elif not isinstance(raw, (str, bytes)):
+                status = 'unsupported_storage_type'
+            else:
+                return json.loads(raw, object_pairs_hook=unique_object,
+                                  parse_constant=reject_constant, parse_float=finite_float), evidence
+        except _StoredJSONError as error:
+            status = str(error)
+        except json.JSONDecodeError:
+            status = 'invalid_json'
+        except UnicodeDecodeError:
+            status = 'invalid_encoding'
+        except (ValueError, RecursionError):
+            status = 'decode_error'
+        evidence.update(status=status, default_applied=True)
+        return default, evidence
 
     def add_campaign(self, case_id: str, url: str, metadata: Dict[str, Any] = None) -> str:
         """Add a new campaign to monitor."""
@@ -180,7 +243,7 @@ class CampaignDatabase:
             """, (campaign_id,)).fetchone()
 
             if row:
-                return {
+                return self._decode_record_json({
                     'id': row[0],
                     'case_id': row[1],
                     'created_at': row[2],
@@ -191,8 +254,8 @@ class CampaignDatabase:
                     'title': row[7],
                     'description': row[8],
                     'risk_level': row[9],
-                    'metadata': self._safe_load_json(row[10], {})
-                }
+                    'metadata': row[10]
+                }, {'metadata': {}})
         return None
 
     def get_active_campaigns(self) -> List[Dict[str, Any]]:
@@ -204,7 +267,7 @@ class CampaignDatabase:
             """).fetchall()
 
             for row in rows:
-                campaigns.append({
+                campaigns.append(self._decode_record_json({
                     'id': row[0],
                     'case_id': row[1],
                     'created_at': row[2],
@@ -215,8 +278,8 @@ class CampaignDatabase:
                     'title': row[7],
                     'description': row[8],
                     'risk_level': row[9],
-                    'metadata': self._safe_load_json(row[10], {})
-                })
+                    'metadata': row[10]
+                }, {'metadata': {}}))
         return campaigns
 
     def update_campaign_status(self, campaign_id: str, status: str) -> None:
@@ -285,7 +348,7 @@ class CampaignDatabase:
             """, (campaign_id, limit)).fetchall()
 
             for row in rows:
-                checks.append({
+                checks.append(self._decode_record_json({
                     'id': row[0],
                     'campaign_id': row[1],
                     'check_time': row[2],
@@ -295,8 +358,8 @@ class CampaignDatabase:
                     'content_hash': row[6],
                     'screenshot_path': row[7],
                     'error_message': row[8],
-                    'metadata': self._safe_load_json(row[9], {})
-                })
+                    'metadata': row[9]
+                }, {'metadata': {}}))
         return checks
 
     def get_unacknowledged_alerts(self) -> List[Dict[str, Any]]:
@@ -309,16 +372,16 @@ class CampaignDatabase:
             """).fetchall()
 
             for row in rows:
-                alerts.append({
+                alerts.append(self._decode_record_json({
                     'id': row[0],
                     'campaign_id': row[1],
                     'alert_time': row[2],
                     'alert_type': row[3],
                     'severity': row[4],
                     'message': row[5],
-                    'metadata': json.loads(row[6]) if row[6] else {},
+                    'metadata': row[6],
                     'acknowledged': bool(row[7])
-                })
+                }, {'metadata': {}}))
         return alerts
 
     def acknowledge_alert(self, alert_id: int) -> None:
@@ -595,14 +658,9 @@ class CampaignDatabase:
         victim = {column: (None if column in interaction_fields and column not in available else row[column])
                   for column in columns}
 
-        # Keep the existing general reader's JSON defaults consistent everywhere.
-        for json_field in ('geolocation_data', 'whois_data', 'metadata', 'attacker_correlation'):
-            victim[json_field] = self._safe_load_json(victim[json_field], {})
-        for json_field in ('related_ips', 'interaction_indicators'):
-            if json_field in available:
-                victim[json_field] = self._safe_load_json(victim[json_field], [])
-
-        return victim
+        defaults = {'geolocation_data': {}, 'whois_data': {}, 'metadata': {},
+                    'attacker_correlation': {}, 'related_ips': [], 'interaction_indicators': []}
+        return self._decode_record_json(victim, defaults, missing=set(defaults) - available)
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL."""

@@ -36,9 +36,9 @@ The [named interaction decoder](sentinel-database-rows.md) also reads original
 fifteen-column and partially migrated tables without modifying them. Missing
 `interaction_type`, `interaction_confidence` and `interaction_indicators` are
 null. They do not receive migration defaults or fabricated confidence. Existing
-JSON fields keep their documented decoding/fallback behavior; malformed-JSON
-provenance remains unresolved. Other missing required columns are not silently
-filled in.
+JSON fields follow the [stored-JSON source/outcome contract](sentinel-json-evidence.md);
+raw source and fallback status are exposed by the database readers. Other missing
+required columns are not silently filled in.
 
 ## CLI consumer and verification
 
@@ -76,5 +76,5 @@ validation of Sentinel reports or the other CLI actions.
 Stored campaign URLs, risk, geographic and interaction labels remain unverified
 observations/claims. Read-only access does not authenticate them. These are
 real storage/CLI regression checks, not live collection or classifier accuracy
-evaluation. S11 remains open for the other readers, malformed-data provenance,
-statistics, reports and lifecycle consumers; active monitoring is S14 work.
+evaluation. S11 remains open for other reader/statistical/report/lifecycle
+consumers and end-to-end provenance propagation; active monitoring is S14 work.

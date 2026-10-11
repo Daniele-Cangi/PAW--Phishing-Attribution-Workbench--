@@ -28,10 +28,11 @@ Unicode and nested valid JSON. It consistently uses the general reader's
 existing JSON fallback: object fields default to `{}` and list fields to `[]`
 when SQL NULL, empty or malformed. Valid JSON is decoded without a new shape
 validator, including JSON null, scalar and differently shaped values. This
-fallback does not validate input or expose malformed raw JSON; storage is not
-rewritten. Invalid geolocation JSON can still fail the country SQL query before
-decoding. JSON admission and explicit malformed-data provenance need a separate
-disposition; they are not resolved by this patch.
+fallback in the original row-mapping patch did not expose malformed raw JSON;
+storage is not rewritten. The subsequent [stored-JSON contract](sentinel-json-evidence.md)
+adds typed source and explicit decoding status, including ambiguity/non-finite
+rejection. Invalid geolocation JSON can still fail the country SQL query before
+decoding; SQL JSON admission remains a separate boundary.
 
 ## Verification and limits
 

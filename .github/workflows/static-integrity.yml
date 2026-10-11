@@ -236,6 +236,9 @@ jobs:
       - name: Verify actual passive Sentinel CLI list and storage preservation
         run: python tests/integration_sentinel_passive_real.py
 
+      - name: Verify stored Sentinel JSON sources and explicit decoding outcomes
+        run: python -m unittest discover -s tests -p 'test_sentinel_json_evidence.py' -v
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5
