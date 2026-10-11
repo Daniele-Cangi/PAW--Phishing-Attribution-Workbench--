@@ -465,6 +465,10 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
     headers['urls'] = urls
     headers['url_evidence'] = url_evidence
     write_json(os.path.join(case_dir, 'url_evidence.json'), url_evidence)
+    from .url_sources import inventory_url_sources, url_source_coverage
+    url_source_inventory = inventory_url_sources(mime_result, body_inventory, msg, headers,
+                                                header_inventory, url_evidence)
+    write_json(os.path.join(case_dir, 'url_source_inventory.json'), url_source_inventory)
     
     # Analyze content for phishing indicators
     subject = headers.get("subject", "")
@@ -514,6 +518,7 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
     stage_status['header_inventory'] = inventory_coverage(header_inventory)
     stage_status['mime_header_inventory'] = mime_header_coverage(mime_header_inventory)
     stage_status['mime_body_evidence'] = body_evidence_coverage(body_inventory)
+    stage_status['url_sources'] = url_source_coverage(url_source_inventory)
     url_results = deobfuscated.get('urls', [])
     stage_status['url_interpretation'] = {
         'status':'partial' if any(r.get('status') != 'completed' or r.get('analysis_status') == 'partial'
@@ -1152,6 +1157,11 @@ def trace_one(eml_path, lang, stix, abuse, anchor, no_egress, profile="default",
         f"- Artifact: mime_body_evidence.json; preserved parts: {body_inventory['part_count']}; "
         f"payload bytes: {body_inventory['payload_bytes']}; status: {body_inventory['status']}\n"
         "- Per-part transfer-decoded bytes and derived charset text; exact original: input.eml.\n"
+        "\n## URL Source Links\n"
+        f"- Artifact: url_source_inventory.json; links: {url_source_inventory['inventoried_link_count']}; "
+        f"omitted: {url_source_inventory['omitted_link_count']}; "
+        f"unmapped records: {url_source_inventory['unmapped_evidence_count']}; status: {url_source_inventory['status']}\n"
+        "- Per-part decoded body and first selected Subject/From views; existing URL records and targets unchanged.\n"
         "\n## Received Path\n")
     for i,h in enumerate(hops, start=1):
         tech_md += f"- Hop {i}: by={h.get('by')} from={h.get('from')} ip={h.get('ip')} date={h.get('date')} helo={h.get('helo')} ptr={h.get('ptr')} skew_s={h.get('skew_s')} fqdn_ok={h.get('fqdn_ok')} helo_ptr_match={h.get('helo_ptr_match')} role={h.get('role')}\n"

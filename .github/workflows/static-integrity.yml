@@ -203,6 +203,12 @@ jobs:
       - name: Verify actual offline embedded MIME bytes and sealed exports
         run: python tests/integration_embedded_wire_real.py
 
+      - name: Verify bounded links from existing URLs to outer-message sources
+        run: python -m unittest discover -s tests -p 'test_url_sources.py' -v
+
+      - name: Verify actual offline URL source links and sealed exports
+        run: python tests/integration_url_sources_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

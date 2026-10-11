@@ -123,3 +123,61 @@ Inconclusive is not a benign classification. Detonation, network enrichment and
 DNS-dependent authentication checks remain excluded/unavailable on this host.
 Raw emails, account identifiers, tracking values and private run files are not
 included in the repository. UI and the separate Linux lab remain deferred.
+
+## Per-part and selected-header source links
+
+The existing inventory preserves original candidate strings and transformation
+paths, but deduplication loses the connection to individual body parts. A real
+offline regression has the same URL in plain text, HTML and Subject: one URL
+record survives, with all three source representations retained elsewhere but
+no structured links between them.
+
+`url_source_inventory.json` adds those links without changing any existing URL
+record, decoder, target or score. A link contains an ordered `url_evidence_index`
+into `url_evidence.json` and a `source_index` into the source catalog. Body sources
+reference `mime_body_evidence.json`, part IDs and persisted charset-text
+paths/hashes/status. Selected header sources reference the first Subject/From
+views in `headers.json`, their original parser field indexes and the availability
+of the corresponding `header_inventory.json` field. The full source EML hash
+binds the catalog to the existing body/header inventories; inconsistent source
+bindings are rejected. The API exposes both inventories, seals/ZIPs include
+the artifact, and the technical report and coverage reference it. Historical
+cases without it remain readable.
+
+Links mean exact candidate presence in a supported representation, once per
+source and URL record. Repeated occurrences within the same part, HTML attribute
+versus visible-text positions and original byte offsets are not inventoried.
+HTML character references/visible text follow the existing parser semantics;
+each document has fresh state. Script/style text, comments and attributes follow
+the already supported candidate extraction. Derived records match their original
+`source_url`, so colliding recovered destinations still link to their respective
+original candidates. Invalid and unresolved records can also have known sources;
+locating their sources does not make them valid targets.
+
+Only supported non-attached body parts and the first selected Subject/From views
+are in this scope. Duplicate later headers, other fields, opaque content and
+attached/embedded messages retain their separate inventories. Completion of this
+catalog is not complete URL discovery, successful decoding, execution,
+authentication or verified attribution. Partial charset/transfer provenance and
+missing persisted text remain explicit in the referenced body evidence; this
+stage describes source linkage separately.
+
+No URL strings are duplicated in links. The source catalog is bounded by the
+existing MIME part/depth/input limits plus two selected headers. Default limits
+retain an ordered prefix of 4,096 links and at most 256 unmatched record indexes.
+All matching pairs are counted, including omitted links. `mapped_evidence_count`
+counts located records before retention limits; it does not assert that every
+link is retained. Total/inventoried/omitted link counts, unmatched record counts,
+omitted unmatched-index counts and issues distinguish completed, limited and
+partial linkage. Missing source matches are never invented. The lookup adds no
+external access or new decoder, and uses the same bounded source views as the
+analysis worker.
+
+Ten contracts cover repeated parts/header sources, candidate collisions,
+invalid/unresolved URLs, HTML entities/split visible text/comments/scripts,
+independent parser state, charset/header limits, attached scope, missing source
+matches, exact prefix accounting, input binding and no-egress. Nine actual full
+CLI cases and five loopback HTTP workers independently check source contexts,
+files/hashes, API/ZIP, coverage and seals. The actual limit fixture has 100 URL
+records in 50 independent text parts: 5,000 links, 4,096 retained and 904 omitted.
+Constructed inputs test linkage regressions, not classification accuracy.
