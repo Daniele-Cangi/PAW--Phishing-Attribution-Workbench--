@@ -287,6 +287,41 @@ class KitStaticTests(unittest.TestCase):
                     else: self.assertFalse(inventory.exists())
                     self.assertFalse(list(case.glob('*.tmp')))
 
+    def test_campaign_serialization_rejection_preserves_both_artifacts(self):
+        locations = ('{"extra":%s}', '{"extra":{"nested":[0,%s]}}',
+                     '{"static_observations":{"existing":%s}}')
+        for token in ('NaN', 'Infinity', '-Infinity', '1e999', '-1e999'):
+            for template in locations:
+                for existing in (False, True):
+                    with self.subTest(token=token, location=template, existing=existing), tempfile.TemporaryDirectory() as directory:
+                        case = Path(directory); captures = case/'detonation'/'runs'; captures.mkdir(parents=True)
+                        (captures/'page.html').write_bytes(HTML.encode())
+                        raw = (template % token).encode()
+                        campaign = case/'campaign_origin.json'; campaign.write_bytes(raw)
+                        inventory = case/'phishing_kit_analysis.json'; prior = b'{"prior":"preserve"}'
+                        if existing: inventory.write_bytes(prior)
+                        before = len(violations())
+                        with offline_policy(), self.assertRaises(ValueError):
+                            publish_captured_kit_inventory(case)
+                        self.assertEqual(campaign.read_bytes(), raw)
+                        if existing: self.assertEqual(inventory.read_bytes(), prior)
+                        else: self.assertFalse(inventory.exists())
+                        self.assertFalse(list(case.glob('*.tmp')))
+                        self.assertEqual(len(violations()), before)
+
+    def test_finite_numbers_and_nonfinite_text_are_publishable_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case = Path(directory)
+            metadata = {'extra': [1.7976931348623157e308, -1.5, 0, -0.0, 1e-300],
+                        'text': 'NaN Infinity -Infinity 1e999 €',
+                        'static_observations': {'existing': {'finite': .5}}}
+            (case/'campaign_origin.json').write_text(json.dumps(metadata, allow_nan=False), encoding='utf-8')
+            with offline_policy(): publish_captured_kit_inventory(case)
+            stored = json.loads((case/'campaign_origin.json').read_text())
+            self.assertEqual(stored['extra'], metadata['extra'])
+            self.assertEqual(stored['text'], metadata['text'])
+            self.assertEqual(stored['static_observations']['existing'], metadata['static_observations']['existing'])
+
     @unittest.skipUnless(os.name == 'posix', 'POSIX FIFO and symlink semantics')
     def test_capture_does_not_follow_symlinks_or_read_fifo(self):
         with tempfile.TemporaryDirectory() as directory:

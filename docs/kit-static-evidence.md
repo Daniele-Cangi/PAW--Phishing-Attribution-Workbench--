@@ -74,6 +74,11 @@ key. Active collection and full active report/export behavior remain S14 work.
 Static publication is outside endpoint/summary-discovery conditions, with an
 explicit no-egress guard. Campaign JSON/container validation precedes all
 publication writes: rejection preserves both existing files (or their absence).
+The final updated campaign is pre-serialized with the writer's strict
+`allow_nan=False` contract before either write. Non-finite retained numbers,
+including exponent overflow and nested/sibling values, cannot replace a prior
+inventory before rejection. Finite numbers and text containing those token names
+remain supported metadata.
 Writes are atomic per file, not a transaction across both artifact paths.
 The host's full `--no-egress` path continues to skip collection and this consumer;
 static helper tests do not prove that detonation is working.
@@ -100,3 +105,11 @@ static reachability/consumer evidence, not an active trace/collection run.
 On the corrected source, all 23 focused contracts were included in 535 general
 tests (527 passed, eight platform skips). Actual shared CLI/HTTP query/export,
 shutdown/crash recovery and the wheel's 90 source-byte matches passed again.
+
+The subsequent serialization correction passed 25 focused tests (one POSIX
+skip), all included in 537 general tests (529 passed, eight platform skips),
+and a fresh wheel/90-source byte match. The production delta is confined to
+preflight serialization in the static publisher; trace control flow and all
+other package sources match the preceding reviewed version. CLI/API and the
+20-original no-egress corpus results above remain prior evidence, not new runs
+for this serialization-only correction. Active collection remains deferred.

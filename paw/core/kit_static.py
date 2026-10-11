@@ -317,6 +317,9 @@ def publish_captured_kit_inventory(case_dir):
     campaign.setdefault('static_observations', {})['captured_kit'] = {
         'path': 'phishing_kit_analysis.json', 'status': analysis['status'],
         'verified': False, 'observation_count': len(analysis['observations'])}
+    # json.loads accepts non-finite numbers, including exponent overflow.
+    # Preflight the final campaign using atomic_json's serialization contract.
+    json.dumps(campaign, indent=2, allow_nan=False)
     atomic_json(case/'phishing_kit_analysis.json', analysis)
     atomic_json(case/'campaign_origin.json', campaign)
     return analysis
