@@ -100,6 +100,55 @@ Valid supported identity domains retain `derived_embedded_message_serialization`
 This checks the enclosing attachment's transfer domain; it does not claim full
 content/format validation of the encapsulated email or fetch external bodies.
 
+### Separate original embedded-message body bytes
+
+`message/*` attachments additionally expose `original_wire` in MIME and attachment
+metadata. It describes a byte span of `input.eml` located by the existing
+framing lookup, with scope `parser_matched_original_mime_body_span`. Captured spans
+include the encapsulated headers, folded/duplicate fields and original line
+breaks; they exclude enclosing MIME headers and the boundary separator's newline.
+Root `message/*`, nested multipart siblings and implicit `multipart/digest`
+messages use the same lookup. The lookup stops at the enclosing message part;
+it does not recursively create original files for its inner messages.
+
+Captured metadata records the source EML path/SHA-256, zero-based byte `offset`,
+`size` and span SHA-256. The attachment scanner writes a separate generated
+`attachments/wire-part-<part-id>-<sha256>.bin` with exclusive creation and exposes
+its `evidence_path`. Direct calls without a persistence directory retain the
+in-memory capture metadata without a path. Existing attachment `size`, hashes,
+`byte_source` and `evidence_path` still describe the existing parser representation;
+neither representation silently replaces the other. Both files enter normal
+case seals and exports, and the API exposes existing attachment metadata.
+
+Capture is independent of transfer interpretation. Unsupported, duplicate or
+invalid transfer declarations can leave interpretation partial while preserving
+the exact located encoded bytes. `transfer_decoded` and `authenticity_verified`
+are false for the original span. A captured span is not verified authentication,
+format conformance, complete message parsing or malware analysis. It does not
+make inner headers or URL candidates part of the outer message's evidence.
+Non-message opaque content keeps its existing decoded attachment contract.
+
+Missing bound source, unclosed/nonmatching multipart framing or a parser defect
+that prevents locating the body produces `status: not_evaluated`, an explicit
+reason and no span/hash/file. MIME and attachment coverage remain partial. No
+serialization is substituted for missing original bytes. The full source still
+remains in `input.eml`.
+
+Span lookup stores offsets until an attachment is processed; no new decoder or
+external read is introduced. The original source is limited to 25 MiB, and
+mapped outer attachment body spans do not overlap or descend into one another.
+Thus their aggregate additional retained bytes cannot exceed the original-input
+limit. Existing part/depth checks apply before lookup; existing decoded-byte
+limits continue to account for the parser representations independently.
+
+Nine contract tests cover original versus derived bytes, exact boundaries,
+root/nested/digest scope, empty bodies, subtypes, invalid/unsupported transfer,
+unavailable mapping, limits, exclusive writes, tamper-detecting seals and no-egress.
+The focused integration runs twelve actual full CLI cases and five loopback HTTP
+workers, independently checking fixture byte spans, derived parser output,
+source hashes, partial coverage, API/ZIP files and seals. These constructed
+inputs establish extraction regressions, not classification accuracy.
+
 The existing input, part/depth, decoded-byte and text-byte limits apply before
 persistence. Supported body payloads share the 2 MiB text-byte budget; retaining
 them does not introduce unbounded reads or a second decoder. Persisted UTF-8 text
