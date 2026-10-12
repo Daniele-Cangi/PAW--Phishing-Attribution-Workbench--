@@ -275,6 +275,9 @@ jobs:
       - name: Verify actual cold stored filter/statistics APIs and source preservation
         run: python tests/integration_sentinel_stored_filters_real.py
 
+      - name: Verify actual unavailable Sentinel CLI lifecycle before source access
+        run: python tests/integration_sentinel_lifecycle_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5
