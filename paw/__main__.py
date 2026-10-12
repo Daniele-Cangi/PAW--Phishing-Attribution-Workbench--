@@ -262,9 +262,9 @@ For help: paw help <command>
         p_update.add_argument("--case", required=True, help="Path to case directory")
 
         # MONITOR command (Sentinel)
-        p_monitor = sub.add_parser("monitor", help="Continuous monitoring of phishing campaigns")
+        p_monitor = sub.add_parser("monitor", help="Stored campaigns/local integrity; service start/stop unavailable")
         p_monitor.add_argument("action", choices=["start", "stop", "status", "add", "remove", "list", "check", "files", "integrity"],
-                              help="Monitoring action")
+                              help="Monitoring action (start/stop unavailable; no persistent service control)")
         p_monitor.add_argument("--case", help="Case ID to monitor (for add action)")
         p_monitor.add_argument("--url", help="URL to monitor (for add action)")
         p_monitor.add_argument("--campaign", help="Campaign ID (for check action)")
@@ -400,6 +400,10 @@ For help: paw help <command>
             from .core.trace import update_report
             update_report(args.case)
         elif args.cmd == "monitor":
+            if args.action in ("start", "stop"):
+                raise RuntimeError("Sentinel service control is unavailable. "
+                                   f"'{args.action}' has no supervised persistent service "
+                                   "or cross-process stop protocol.")
             if args.action in ("list", "status"):
                 from .sentinel import CampaignDatabase, SentinelConfig
                 config = SentinelConfig()
@@ -423,13 +427,7 @@ For help: paw help <command>
             from .sentinel import SentinelMonitor
             monitor = SentinelMonitor()
 
-            if args.action == "start":
-                monitor.start()
-                print("✅ Sentinel monitoring started")
-            elif args.action == "stop":
-                monitor.stop()
-                print("🛑 Sentinel monitoring stopped")
-            elif args.action == "add":
+            if args.action == "add":
                 if not args.case or not args.url:
                     print("❌ Error: --case and --url required for add action")
                     sys.exit(1)
@@ -543,6 +541,7 @@ Commands:
   forensic    Strict profile + exports + optional anchoring
   detonate    Safely detonate URLs from analyzed case
   canary      Unavailable: collection awaits isolated lab storage
+  monitor     Stored campaigns/local integrity; service start/stop unavailable
   geographic  Generate geographic intelligence reports
   query       Search case database
   export      Export case in various formats
@@ -565,6 +564,24 @@ For detailed help: paw help <command>
 def show_command_help(topic):
     """Show detailed help for a specific command."""
     help_topics = {
+        "monitor": """
+🐾 PAW MONITOR - Sentinel commands
+
+USAGE:
+  paw monitor <action> [options]
+
+ACTIONS:
+  start, stop         Unavailable: no supervised persistent service control
+  list, status        Passive stored campaign/count reads; runtime state unknown
+  add, remove         Existing stored campaign management
+  check               Active HTTP/screenshot checks; isolation verification deferred
+  files, integrity    Existing local case-file integrity commands
+
+start/stop fail before Sentinel imports, configuration or database access.
+They neither start a service nor stop an independently running instance.
+Active collection and in-process monitor lifecycle remain unvalidated for S14.
+Other management/integrity admission remains a separate S11 audit.
+""",
         "analyze": """
 🐾 PAW ANALYZE - Email Analysis
 
