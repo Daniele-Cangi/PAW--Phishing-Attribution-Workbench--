@@ -139,6 +139,15 @@ def main():
                     assert b'Worker shutdown not confirmed' in result.stdout,result.stdout
                 assert not list((root/'exports').glob('*.zip'))
                 assert not list((root/'cases').glob('*.zip'))
+                local_before = {p.relative_to(root/'cases').as_posix():p.read_bytes()
+                                for p in (root/'cases').rglob('*') if p.is_file()}
+                for action in ('files','integrity'):
+                    result = subprocess.run([sys.executable,'-X','utf8','-m','paw','monitor',action],
+                        cwd=root,env=environment,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=15)
+                    assert result.returncode != 0 and b'Worker shutdown not confirmed' in result.stdout,result.stdout
+                    assert not (root/'sentinel.db').exists(), 'Local checks initialized campaign storage'
+                assert local_before == {p.relative_to(root/'cases').as_posix():p.read_bytes()
+                                        for p in (root/'cases').rglob('*') if p.is_file()}
                 worker.resume()
                 assert cli.wait(timeout=90)==0
                 state=json.loads(request('/api/analysis/'+control.name))
@@ -159,6 +168,18 @@ def main():
                 assert {item['id'] for item in completed_matches}=={item['id'] for item in matches}
                 listing = json.loads(request('/api/cases?limit=100'))['cases']
                 assert len(listing)==8 and all(item['status']=='completed' and 'subject' in item for item in listing),listing
+                local_before = {p.relative_to(root/'cases').as_posix():p.read_bytes()
+                                for p in (root/'cases').rglob('*') if p.is_file()}
+                for action in ('files','integrity'):
+                    result = subprocess.run([sys.executable,'-X','utf8','-m','paw','monitor',action],
+                        cwd=root,env=environment,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=15)
+                    assert result.returncode == 0,result.stdout
+                    assert not (root/'sentinel.db').exists(), 'Local checks initialized campaign storage'
+                    if action == 'integrity': assert b'Integrity OK: 8' in result.stdout,result.stdout
+                    else: assert b'first scan is not historical change detection' in result.stdout,result.stdout
+                assert local_before == {p.relative_to(root/'cases').as_posix():p.read_bytes()
+                                        for p in (root/'cases').rglob('*') if p.is_file()}
+                checks.append({'flow':'local Sentinel files/integrity reject an actual live CLI worker; completed eight original EML cases are readable; case bytes unchanged and no campaign database initialized','status':'passed'})
                 checks.append({'flow':'missing-index CLI query creates no storage; active original-EML CLI + API startup; collections redacted and indexed matches hidden by both HTTP and CLI; query leaves SQLite bytes unchanged; HTTP and CLI evidence readers blocked; completed collection/query/verify/export','status':'passed'})
 
                 cli,control,case,worker=start_cli('crash')

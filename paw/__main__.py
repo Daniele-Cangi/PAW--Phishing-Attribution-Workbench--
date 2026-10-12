@@ -424,6 +424,42 @@ For help: paw help <command>
                 else:
                     print("📋 No active campaigns")
                 return
+            if args.action == "files":
+                from .sentinel import FileMonitor
+                file_monitor = FileMonitor()
+                print("File observations use this process baseline; first scan is not historical change detection.")
+                changes = file_monitor.monitor_all_cases()
+                if changes:
+                    print("🔍 File Changes Detected:")
+                    for change in changes:
+                        print(f"\n📁 Case: {change['case_id']}")
+                        print(f"   Integrity: {change['integrity_status']}")
+                        if change['integrity_message']:
+                            print(f"   Message: {change['integrity_message']}")
+                        if change['new_files']:
+                            print(f"   🆕 New files: {len(change['new_files'])}")
+                        if change['modified_files']:
+                            print(f"   ✏️  Modified files: {len(change['modified_files'])}")
+                        if change['deleted_files']:
+                            print(f"   🗑️  Deleted files: {len(change['deleted_files'])}")
+                else:
+                    print("No case observations returned")
+                return
+            elif args.action == "integrity":
+                from .sentinel import FileMonitor
+                file_monitor = FileMonitor()
+                report = file_monitor.generate_integrity_report()
+                print("🔐 File Integrity Report:")
+                print(f"   Total cases: {report['total_cases']}")
+                print(f"   ✅ Integrity OK: {report['integrity_summary']['ok']}")
+                print(f"   ❌ Compromised: {report['integrity_summary']['compromised']}")
+                print(f"   ❓ Unknown: {report['integrity_summary']['unknown']}")
+                print("\n📋 Case Details:")
+                for case in report['cases']:
+                    status_emoji = {'ok':'✅', 'unknown':'❓', 'compromised':'❌'}[case['integrity_status']]
+                    print(f"   {status_emoji} {case['case_id']}: {case['file_count']} files - {case['integrity_message']}")
+
+                return
             from .sentinel import SentinelMonitor
             monitor = SentinelMonitor()
 
@@ -458,38 +494,6 @@ For help: paw help <command>
                             print(f"    ❌ Error: {result['error_message']}")
                 else:
                     print("📋 No campaigns to check")
-            elif args.action == "files":
-                from .sentinel import FileMonitor
-                file_monitor = FileMonitor()
-                changes = file_monitor.monitor_all_cases()
-                if changes:
-                    print("🔍 File Changes Detected:")
-                    for change in changes:
-                        print(f"\n📁 Case: {change['case_id']}")
-                        print(f"   Integrity: {change['integrity_status']}")
-                        if change['integrity_message']:
-                            print(f"   Message: {change['integrity_message']}")
-                        if change['new_files']:
-                            print(f"   🆕 New files: {len(change['new_files'])}")
-                        if change['modified_files']:
-                            print(f"   ✏️  Modified files: {len(change['modified_files'])}")
-                        if change['deleted_files']:
-                            print(f"   🗑️  Deleted files: {len(change['deleted_files'])}")
-                else:
-                    print("✅ No file changes detected in any case")
-            elif args.action == "integrity":
-                from .sentinel import FileMonitor
-                file_monitor = FileMonitor()
-                report = file_monitor.generate_integrity_report()
-                print("🔐 File Integrity Report:")
-                print(f"   Total cases: {report['total_cases']}")
-                print(f"   ✅ Integrity OK: {report['integrity_summary']['ok']}")
-                print(f"   ❌ Compromised: {report['integrity_summary']['compromised']}")
-                print(f"   ❓ Unknown: {report['integrity_summary']['unknown']}")
-                print("\n📋 Case Details:")
-                for case in report['cases']:
-                    status_emoji = {'ok':'✅', 'unknown':'❓', 'compromised':'❌'}[case['integrity_status']]
-                    print(f"   {status_emoji} {case['case_id']}: {case['file_count']} files - {case['integrity_message']}")
 
         elif args.cmd in ["geographic", "geo"]:
             from .sentinel.intelligence_analyzer import IntelligenceAnalyzer
@@ -575,7 +579,7 @@ ACTIONS:
   list, status        Passive stored campaign/count reads; runtime state unknown
   add, remove         Existing stored campaign management
   check               Active HTTP/screenshot checks; isolation verification deferred
-  files, integrity    Existing local case-file integrity commands
+  files, integrity    Local case-file checks; owning workers must be stopped
 
 start/stop fail before Sentinel imports, configuration or database access.
 They neither start a service nor stop an independently running instance.
