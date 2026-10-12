@@ -315,6 +315,17 @@ class CampaignDatabase:
                 }, {'metadata': {}}))
         return campaigns
 
+    def get_monitor_statistics(self) -> Dict[str, int]:
+        """Count stored campaigns and unacknowledged alerts in one read snapshot."""
+        with self.connection() as conn:
+            row = conn.execute("""
+                SELECT COUNT(*), COUNT(CASE WHEN status = 'active' THEN 1 END),
+                    (SELECT COUNT(*) FROM alerts WHERE acknowledged = 0)
+                FROM campaigns
+            """).fetchone()
+        return {'total_campaigns': row[0], 'active_campaigns': row[1],
+                'unacknowledged_alerts': row[2]}
+
     def update_campaign_status(self, campaign_id: str, status: str) -> None:
         """Update campaign status."""
         with self.connection() as conn:

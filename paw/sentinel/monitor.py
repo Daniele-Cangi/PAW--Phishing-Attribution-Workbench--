@@ -103,22 +103,9 @@ class SentinelMonitor:
         self._callbacks['on_content_changed'].append(callback)
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get current monitoring statistics."""
-        campaigns = self.get_all_campaigns()
-        active = [c for c in campaigns if c.get('status') == 'active']
-        
-        # Count unacknowledged alerts (last 24h)
-        from datetime import datetime, timedelta
-        cutoff = datetime.now() - timedelta(hours=24)
-        # For now, return 0 as we don't have alert tracking yet
-        unack_alerts = 0
-        
-        return {
-            'is_running': self.is_running(),
-            'active_campaigns': len(active),
-            'total_campaigns': len(campaigns),
-            'unacknowledged_alerts': unack_alerts
-        }
+        """Stored row counts and this instance's flag, not global service status."""
+        return {**self.db.get_monitor_statistics(),
+                'is_running': self.is_running(), 'is_running_scope': 'this_instance_flag'}
 
     def _monitor_loop(self) -> None:
         """Main monitoring loop."""

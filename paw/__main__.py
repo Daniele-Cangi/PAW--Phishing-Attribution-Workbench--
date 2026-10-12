@@ -400,10 +400,18 @@ For help: paw help <command>
             from .core.trace import update_report
             update_report(args.case)
         elif args.cmd == "monitor":
-            if args.action == "list":
+            if args.action in ("list", "status"):
                 from .sentinel import CampaignDatabase, SentinelConfig
                 config = SentinelConfig()
                 database = CampaignDatabase(config.get("storage.database_path"), read_only=True)
+                if args.action == "status":
+                    stats = database.get_monitor_statistics()
+                    print("📊 Sentinel Status (stored data):")
+                    print("  Running: unknown (not observed by this command)")
+                    print(f"  Total campaigns: {stats['total_campaigns']}")
+                    print(f"  Active campaigns: {stats['active_campaigns']}")
+                    print(f"  Unacknowledged alerts: {stats['unacknowledged_alerts']}")
+                    return
                 campaigns = database.get_active_campaigns()
                 if campaigns:
                     print("📋 Active Campaigns:")
@@ -421,12 +429,6 @@ For help: paw help <command>
             elif args.action == "stop":
                 monitor.stop()
                 print("🛑 Sentinel monitoring stopped")
-            elif args.action == "status":
-                stats = monitor.get_stats()
-                print("📊 Sentinel Status:")
-                print(f"  Running: {stats['is_running']}")
-                print(f"  Active campaigns: {stats['active_campaigns']}")
-                print(f"  Unacknowledged alerts: {stats['unacknowledged_alerts']}")
             elif args.action == "add":
                 if not args.case or not args.url:
                     print("❌ Error: --case and --url required for add action")

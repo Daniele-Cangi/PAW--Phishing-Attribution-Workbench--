@@ -42,15 +42,17 @@ required columns are not silently filled in.
 
 ## CLI consumer and verification
 
-Only `paw monitor list` switches to this mode. It reads the configured database
+PR46 switched `paw monitor list` to this mode. It reads the configured database
 path (default `sentinel.db`) and lists stored active campaigns, without
 constructing/importing the monitor or intelligence collectors. A missing,
 unsupported or damaged database exits nonzero and does not claim that no
 campaigns exist. It prints stored URLs without visiting them. Its existing
 active-only filter remains; this is not an exhaustive export or runtime-service
-status check. The other monitor actions, geographic commands and external
-scripts retain their current admission and remain registered for later audit.
-No `get_stats` placeholder or service-lifecycle behavior is validated here.
+status check. The start/stop and writing/checking actions, geographic commands
+and external scripts retain their current admission and remain registered for later audit.
+The later [stored-status correction](sentinel-status.md) also switches
+`monitor status` to passive admission and replaces the statistics placeholders.
+Start/stop lifecycle behavior is not validated by either passive command.
 
 Nine new actual SQLite contracts cover no creation/migration, existing source
 rows on all sixteen ordered legacy/partial layouts, missing-field nulls,
