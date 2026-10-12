@@ -263,6 +263,12 @@ jobs:
       - name: Verify actual geographic CLI and cold API admission without collection
         run: python tests/integration_sentinel_geographic_real.py
 
+      - name: Verify complete interaction labels and unavailable identity interpretations
+        run: python -m unittest discover -s tests -p 'test_sentinel_interaction_statistics.py' -v
+
+      - name: Verify actual cold passive interaction API and saved JSON sources
+        run: python tests/integration_sentinel_interaction_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5
