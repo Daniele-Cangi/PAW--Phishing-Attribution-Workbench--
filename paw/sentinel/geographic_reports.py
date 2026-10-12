@@ -1,472 +1,227 @@
-# paw/sentinel/geographic_reports.py
-"""
-Automated Geographic Reports for PAW Intelligence.
-Generates maps and statistics showing attacker locations and victim distributions.
-"""
-
+"""Passive descriptions of stored geographic claims; no identity inference."""
+from collections import Counter, defaultdict
+from html import escape
 import json
-import os
+import math
+from pathlib import Path
 import time
-from typing import Dict, List, Any, Optional
-from collections import defaultdict, Counter
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-import pandas as pd
+from typing import Any, Dict, List, Optional
+import uuid
+
+
+def geographic_database_path(config_file='sentinel_config.json'):
+    """Default only on absent config; unreadable/invalid selection must fail."""
+    config = Path(config_file)
+    try:
+        config.lstat()
+    except FileNotFoundError:
+        return 'sentinel.db'
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('Duplicate key in geographic configuration: ' + key)
+            result[key] = value
+        return result
+
+    with config.open('r', encoding='utf-8') as source:
+        value = json.load(source, object_pairs_hook=unique_object)
+    storage = value.get('storage') if isinstance(value, dict) else None
+    database = storage.get('database_path') if isinstance(storage, dict) else None
+    if not isinstance(database, str) or not database.strip():
+        raise ValueError('Geographic configuration requires a nonblank storage.database_path')
+    return database
+
+
+def _html_text(value):
+    # Preserve valid Unicode and display lone surrogates as literal escapes.
+    return escape(value.encode('utf-8', errors='backslashreplace').decode('utf-8'))
+
+
+def validate_geographic_options(case_id=None, min_confidence=0.0, exclude_countries=None,
+                                output_format='both'):
+    if case_id is not None and not isinstance(case_id, str):
+        raise TypeError('case_id must be a string or None')
+    if (isinstance(min_confidence, bool) or not isinstance(min_confidence, (int, float))
+            or not 0 <= min_confidence <= 1 or not math.isfinite(min_confidence)):
+        raise ValueError('min_confidence must be a finite number between 0 and 1')
+    if output_format not in ('json', 'html', 'both'):
+        raise ValueError('output_format must be json, html or both')
+    if exclude_countries is not None and (not isinstance(exclude_countries, list)
+            or any(not isinstance(c, str) or not c.strip() for c in exclude_countries)):
+        raise ValueError('exclude_countries must be a list of nonblank country strings')
 
 
 class GeographicReporter:
-    """Generate geographic reports for victim intelligence analysis."""
+    """Build stored-row observations; saving is explicit report generation."""
 
     def __init__(self, db_connection=None):
+        if db_connection is None:
+            raise RuntimeError('Geographic reports require a real database connection')
         self.db = db_connection
-        self.reports_dir = "reports/geographic"
-        os.makedirs(self.reports_dir, exist_ok=True)
+        self.reports_dir = 'reports/geographic'
 
     def generate_geographic_report(self, case_id: str = None, min_confidence: float = 0.0,
-                                   exclude_countries: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Generate comprehensive geographic report for victims.
-
-        Args:
-            case_id: optional case identifier to limit data
-            min_confidence: minimum interaction confidence to include
-            exclude_countries: optional list of country names (case-insensitive)
-                to exclude from the generated report (useful for sanitizing
-                distributions without modifying case evidence files).
-        """
-        print(f"🗺️  Generando report geografico per case_id: {case_id or 'TUTTI'}")
-
-        # Get victim data
-        victims = self._get_victim_data(case_id, min_confidence)
-
-        if not victims:
-            return {
-                'status': 'no_data',
-                'message': 'Nessun dato vittima disponibile per il report',
-                'case_id': case_id,
-                'total_victims': 0
-            }
-
-        # Analyze geographic distribution
-        geo_stats = self._analyze_geographic_distribution(victims)
-
-        # Optionally remove excluded countries from the stats/visualizations
-        if exclude_countries:
-            exclude_set = {c.lower() for c in exclude_countries}
-
-            # Filter country counts
-            geo_stats['countries'] = {k: v for k, v in geo_stats['countries'].items()
-                                      if k and k.lower() not in exclude_set}
-
-            # Filter regions and cities where the country is prefixed like "Country - Region"
-            geo_stats['regions'] = {k: v for k, v in geo_stats['regions'].items()
-                                    if k and k.split(' - ')[0].lower() not in exclude_set}
-
-            geo_stats['cities'] = {k: v for k, v in geo_stats['cities'].items()
-                                   if k and k.split(' - ')[0].lower() not in exclude_set}
-
-            # Filter interaction types per country
-            filtered_interaction = {}
-            for int_type, countries in geo_stats['interaction_types'].items():
-                filtered_countries = {country: cnt for country, cnt in countries.items()
-                                      if country and country.lower() not in exclude_set}
-                if filtered_countries:
-                    filtered_interaction[int_type] = filtered_countries
-            geo_stats['interaction_types'] = filtered_interaction
-
-            # Filter attacker/victim country lists and coordinates
-            geo_stats['attacker_countries'] = [c for c in geo_stats['attacker_countries'] if c.lower() not in exclude_set]
-            geo_stats['victim_countries'] = [c for c in geo_stats['victim_countries'] if c.lower() not in exclude_set]
-            geo_stats['total_countries'] = len(geo_stats['countries'])
-            geo_stats['coordinates'] = [pt for pt in geo_stats.get('coordinates', []) if pt.get('country','').lower() not in exclude_set]
-
-        # Generate visualizations
-        visualizations = self._generate_visualizations(geo_stats)
-
-        # Create report
-        report = {
-            'status': 'success',
-            'generated_at': time.time(),
-            'case_id': case_id,
-            'total_victims': len(victims),
-            'min_confidence': min_confidence,
-            'geographic_stats': geo_stats,
-            'visualizations': visualizations,
-            'summary': self._generate_summary(geo_stats)
-        }
-
-        # Save report
-        self._save_report(report, case_id)
-
+                                   exclude_countries: Optional[List[str]] = None, *,
+                                   output_format: str = 'both') -> Dict[str, Any]:
+        validate_geographic_options(case_id, min_confidence, exclude_countries, output_format)
+        report = self._build_report(case_id, min_confidence, exclude_countries)
+        report['output_files'] = self._save_report(report, output_format)
         return report
 
-    def _get_victim_data(self, case_id: str = None, min_confidence: float = 0.0) -> List[Dict]:
-        """Get victim data from database."""
-        if not self.db:
-            raise RuntimeError("Geographic reports require a real database connection")
+    def get_statistics(self, case_id=None, min_confidence=0.0):
+        """Same selected observations as the report, without output creation."""
+        report = self._build_report(case_id, min_confidence)
+        report.update(countries=report['geographic_stats']['countries'],
+                      attackers=None, attacker_percentage=None)
+        return report
 
-        try:
-            victims = self.db.get_victim_intelligence()
-            filtered_victims = []
+    @staticmethod
+    def _label(value):
+        return value if isinstance(value, str) and value.strip() else None
 
-            for victim in victims:
-                # Apply filters
-                if case_id and victim.get('case_id') != case_id:
+    @staticmethod
+    def _coordinates(geo):
+        lat, lon = geo.get('lat'), geo.get('lon')
+        if (isinstance(lat, (int, float)) and not isinstance(lat, bool) and -90 <= lat <= 90
+                and isinstance(lon, (int, float)) and not isinstance(lon, bool) and -180 <= lon <= 180):
+            return lat, lon
+        return None
+
+    def _build_report(self, case_id=None, min_confidence=0.0, exclude_countries=None):
+        validate_geographic_options(case_id, min_confidence, exclude_countries)
+        records = self.db.get_forensic_victim_intelligence(case_id)
+        json.dumps(records, allow_nan=False)  # Explicit failure on unsupported native scalars.
+        excluded = {c.casefold() for c in (exclude_countries or [])}
+        countries, regions, cities = Counter(), defaultdict(list), defaultdict(list)
+        interactions, coordinates = defaultdict(Counter), []
+        selection = {key: [] for key in ('included_ids', 'confidence_unusable_ids',
+            'confidence_below_threshold_ids', 'country_excluded_ids', 'geography_unusable_ids')}
+        omissions = {key: [] for key in ('country', 'region', 'city', 'coordinates', 'interaction_type')}
+        for record in records:
+            identifier = record['id']
+            confidence = record['interaction_confidence']
+            if min_confidence > 0:
+                if (isinstance(confidence, bool) or not isinstance(confidence, (int, float))
+                        or not 0 <= confidence <= 1):
+                    selection['confidence_unusable_ids'].append(identifier)
                     continue
-
-                confidence = victim.get('interaction_confidence', 0.0)
                 if confidence < min_confidence:
+                    selection['confidence_below_threshold_ids'].append(identifier)
                     continue
-
-                # Must have geolocation data
-                if not victim.get('geolocation_data'):
-                    continue
-
-                filtered_victims.append(victim)
-
-            return filtered_victims
-
-        except Exception as e:
-            print(f"❌ Errore recupero dati vittime: {e}")
-            return []
-
-    def _analyze_geographic_distribution(self, victims: List[Dict]) -> Dict[str, Any]:
-        """Analyze geographic distribution of victims."""
-        countries = Counter()
-        regions = Counter()
-        cities = Counter()
-        interaction_types = defaultdict(lambda: defaultdict(int))
-
-        attacker_countries = []
-        victim_countries = []
-
-        for victim in victims:
-            geo = victim.get('geolocation_data', {})
-            interaction_type = victim.get('interaction_type', 'unknown')
-
-            country = geo.get('country', 'Unknown')
-            region = geo.get('region', 'Unknown')
-            city = geo.get('city', 'Unknown')
-
-            countries[country] += 1
-            regions[f"{country} - {region}"] += 1
-            cities[f"{country} - {city}"] += 1
-
-            interaction_types[interaction_type][country] += 1
-
-            # Separate attackers and victims
-            if interaction_type in ['attacker', 'suspicious']:
-                attacker_countries.append(country)
-            else:
-                victim_countries.append(country)
-
-        return {
+            geo = record['geolocation_data']
+            evidence = record['json_evidence']['fields']['geolocation_data']
+            if evidence['status'] != 'decoded' or not isinstance(geo, dict):
+                selection['geography_unusable_ids'].append(identifier)
+                continue
+            country, region, city = (self._label(geo.get(key)) for key in ('country', 'region', 'city'))
+            point = self._coordinates(geo)
+            if country is not None and country.casefold() in excluded:
+                selection['country_excluded_ids'].append(identifier)
+                continue
+            if not any(value is not None for value in (country, region, city, point)):
+                selection['geography_unusable_ids'].append(identifier)
+                continue
+            selection['included_ids'].append(identifier)
+            label = self._label(record['interaction_type'])
+            for key, value in (('country', country), ('region', region), ('city', city),
+                               ('coordinates', point), ('interaction_type', label)):
+                if value is None:
+                    omissions[key].append(identifier)
+            if country is not None:
+                countries[country] += 1
+                if label is not None:
+                    interactions[label][country] += 1
+            if region is not None:
+                regions[(country, region)].append(identifier)
+            if city is not None:
+                cities[(country, region, city)].append(identifier)
+            if point is not None:
+                coordinates.append({'record_id': identifier, 'lat': point[0], 'lon': point[1],
+                    'country': country, 'city': city, 'stored_interaction_type': record['interaction_type'],
+                    'ip': record['victim_ip'], 'verified': False})
+        stats = {
             'countries': dict(countries.most_common()),
-            'regions': dict(regions.most_common(10)),
-            'cities': dict(cities.most_common(10)),
-            'interaction_types': dict(interaction_types),
-            'attacker_countries': list(set(attacker_countries)),
-            'victim_countries': list(set(victim_countries)),
-            'total_countries': len(countries),
-            'top_attacker_country': max(attacker_countries, key=attacker_countries.count) if attacker_countries else None,
-            'coordinates': self._extract_coordinates(victims)
+            'regions': [{'country': key[0], 'region': key[1], 'count': len(ids), 'source_ids': ids}
+                        for key, ids in regions.items()],
+            'cities': [{'country': key[0], 'region': key[1], 'city': key[2], 'count': len(ids), 'source_ids': ids}
+                       for key, ids in cities.items()],
+            'interaction_types': {key: dict(counts) for key, counts in interactions.items()},
+            'coordinates': coordinates, 'total_countries': len(countries),
+            'field_omissions': omissions, 'attacker_countries': [], 'victim_countries': [],
+            'top_attacker_country': None
         }
-
-    def _extract_coordinates(self, victims: List[Dict]) -> List[Dict]:
-        """Extract coordinates for mapping."""
-        coordinates = []
-
-        for victim in victims:
-            geo = victim.get('geolocation_data', {})
-            lat = geo.get('lat')
-            lon = geo.get('lon')
-
-            if lat and lon:
-                coordinates.append({
-                    'lat': lat,
-                    'lon': lon,
-                    'country': geo.get('country', 'Unknown'),
-                    'city': geo.get('city', 'Unknown'),
-                    'interaction_type': victim.get('interaction_type', 'unknown'),
-                    'ip': victim.get('victim_ip', 'Unknown')
-                })
-
-        return coordinates
-
-    def _generate_visualizations(self, geo_stats: Dict) -> Dict[str, str]:
-        """Generate geographic visualizations."""
-        visualizations = {}
-
-        try:
-            # Country distribution chart
-            countries_df = pd.DataFrame(list(geo_stats['countries'].items()),
-                                      columns=['Country', 'Count'])
-
-            fig_countries = px.bar(countries_df, x='Country', y='Count',
-                                 title='Distribuzione Vittime per Paese',
-                                 color='Count',
-                                 color_continuous_scale='Reds')
-            visualizations['countries_chart'] = fig_countries.to_html(full_html=False)
-
-            # World map with victim locations
-            if geo_stats['coordinates']:
-                coords_df = pd.DataFrame(geo_stats['coordinates'])
-
-                # Color by interaction type
-                color_map = {
-                    'victim': 'green',
-                    'attacker': 'red',
-                    'suspicious': 'orange',
-                    'unknown': 'gray'
-                }
-
-                coords_df['color'] = coords_df['interaction_type'].map(color_map)
-
-                fig_map = px.scatter_geo(coords_df,
-                                       lat='lat',
-                                       lon='lon',
-                                       color='interaction_type',
-                                       hover_name='city',
-                                       hover_data=['ip', 'country'],
-                                       title='Mappa Globale Vittime e Attaccanti',
-                                       projection='natural earth')
-
-                visualizations['world_map'] = fig_map.to_html(full_html=False)
-
-            # Interaction types by country
-            if geo_stats['interaction_types']:
-                interaction_data = []
-                for int_type, countries in geo_stats['interaction_types'].items():
-                    for country, count in countries.items():
-                        interaction_data.append({
-                            'Interaction_Type': int_type,
-                            'Country': country,
-                            'Count': count
-                        })
-
-                if interaction_data:
-                    int_df = pd.DataFrame(interaction_data)
-                    fig_interaction = px.bar(int_df,
-                                           x='Country',
-                                           y='Count',
-                                           color='Interaction_Type',
-                                           title='Tipi Interazione per Paese',
-                                           barmode='stack')
-                    visualizations['interaction_chart'] = fig_interaction.to_html(full_html=False)
-
-        except Exception as e:
-            print(f"⚠️  Errore generazione visualizzazioni: {e}")
-            visualizations['error'] = str(e)
-
-        return visualizations
-
-    def _generate_summary(self, geo_stats: Dict) -> Dict[str, Any]:
-        """Generate human-readable summary."""
-        countries = geo_stats['countries']
-        attacker_countries = geo_stats['attacker_countries']
-        victim_countries = geo_stats['victim_countries']
-
-        summary = {
-            'total_countries': geo_stats['total_countries'],
-            'top_countries': list(countries.keys())[:5],
-            'attacker_countries': attacker_countries,
-            'victim_countries': victim_countries,
-            'risk_assessment': self._assess_geographic_risk(geo_stats)
-        }
-
-        return summary
-
-    def _assess_geographic_risk(self, geo_stats: Dict) -> Dict[str, Any]:
-        """Assess geographic risk based on distribution."""
-        attacker_countries = geo_stats['attacker_countries']
-        total_countries = geo_stats['total_countries']
-
-        risk_level = "LOW"
-        risk_factors = []
-
-        # High concentration of attackers in few countries
-        if len(attacker_countries) <= 2 and total_countries > 5:
-            risk_level = "HIGH"
-            risk_factors.append("Concentrazione elevata di attaccanti in pochi paesi")
-
-        # Many attacker countries
-        elif len(attacker_countries) > total_countries * 0.5:
-            risk_level = "MEDIUM"
-            risk_factors.append("Attaccanti distribuiti in molti paesi")
-
-        # Normal distribution
-        else:
-            risk_factors.append("Distribuzione normale di attaccanti")
-
         return {
-            'level': risk_level,
-            'factors': risk_factors,
-            'attacker_country_ratio': len(attacker_countries) / max(total_countries, 1)
+            'schema_version': 1, 'status': 'success', 'evidence_scope': 'stored_rows_unverified',
+            'generated_at': time.time(), 'case_id': case_id, 'min_confidence': min_confidence,
+            'confidence_filter': 'not_applied' if min_confidence == 0 else 'stored_numeric_threshold',
+            'exclude_countries': list(exclude_countries or []), 'source_records': records,
+            'total_records': len(records), 'total_victims': len(selection['included_ids']),
+            'selection': selection, 'geographic_stats': stats,
+            'summary': {'total_countries': len(countries), 'top_countries': list(stats['countries'])[:5],
+                'top_countries_scope': 'five_country_preview; complete countries in geographic_stats',
+                'attacker_countries': [], 'victim_countries': [],
+                'risk_assessment': {'status': 'unavailable', 'level': None,
+                    'reason': 'Stored locations and labels do not establish calibrated risk.'}},
+            'visualizations': {},
+            'unavailable': {
+                'identity': 'Stored geographic and interaction labels do not identify attackers or victims.',
+                'interactive_maps': 'No offline map renderer is validated; original coordinate observations are retained.'},
+            'count_scope': 'Stored rows and literal geographic/interaction claims; not unique people or verified locations.'
         }
 
-    def _save_report(self, report: Dict, case_id: str = None):
-        """Save report to file."""
+    @staticmethod
+    def _generate_html_report(report):
+        """Escaped passive text; no executable markup, scripts or remote assets."""
+        case = 'All cases' if report['case_id'] is None else report['case_id']
+        rows = ''.join('<tr><td>' + _html_text(country) + '</td><td>' + str(count) + '</td></tr>'
+                       for country, count in report['geographic_stats']['countries'].items())
+        source = escape(json.dumps(report, ensure_ascii=True, indent=2, allow_nan=False))
+        return ('<!doctype html><html><head><meta charset="utf-8">'
+            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; base-uri \'none\'; form-action \'none\'">'
+            '<title>Stored geographic observations</title></head><body>'
+            '<h1>Stored geographic observations</h1><p>Case: ' + _html_text(case) + '</p>'
+            '<p>Unverified stored claims. Identity and risk assessment unavailable. Interactive maps unavailable.</p>'
+            '<p>Selected rows: ' + str(report['total_records']) + '; rows with included geographic observations: '
+            + str(report['total_victims']) + '</p><table><thead><tr><th>Stored country</th><th>Rows</th></tr></thead>'
+            '<tbody>' + rows + '</tbody></table><h2>Complete report and original stored sources</h2><pre>'
+            + source + '</pre></body></html>')
+
+    def _save_report(self, report, output_format):
+        stem = 'geographic_report_' + uuid.uuid4().hex
+        directory = Path(self.reports_dir)
+        outputs = []
+        if output_format in ('json', 'both'):
+            outputs.append((directory / (stem + '.json'), json.dumps(report, ensure_ascii=True,
+                            indent=2, allow_nan=False)))
+        if output_format in ('html', 'both'):
+            outputs.append((directory / (stem + '.html'), self._generate_html_report(report)))
+        directory.mkdir(parents=True, exist_ok=True)
+        attempted = []
         try:
-            filename = f"geographic_report_{case_id or 'all'}_{int(time.time())}.json"
-            filepath = os.path.join(self.reports_dir, filename)
-
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(report, f, indent=2, ensure_ascii=False)
-
-            print(f"💾 Report salvato: {filepath}")
-
-            # Generate HTML report
-            self._generate_html_report(report, case_id)
-
-        except Exception as e:
-            print(f"❌ Errore salvataggio report: {e}")
-
-    def _generate_html_report(self, report: Dict, case_id: str = None):
-        """Generate HTML version of the report."""
-        try:
-            html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Report Geografico PAW - {case_id or 'Tutti i Casi'}</title>
-    <meta charset="utf-8">
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .header {{ background: #f0f0f0; padding: 20px; border-radius: 5px; }}
-        .stats {{ display: flex; gap: 20px; margin: 20px 0; }}
-        .stat-box {{ background: #e8f4f8; padding: 15px; border-radius: 5px; flex: 1; }}
-        .visualization {{ margin: 20px 0; }}
-        .risk-high {{ color: #d9534f; }}
-        .risk-medium {{ color: #f0ad4e; }}
-        .risk-low {{ color: #5cb85c; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>🗺️ Report Geografico PAW</h1>
-        <p><strong>Caso:</strong> {case_id or 'Tutti i Casi'}</p>
-        <p><strong>Generato:</strong> {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(report['generated_at']))}</p>
-        <p><strong>Totale Vittime:</strong> {report['total_victims']}</p>
-    </div>
-
-    <div class="stats">
-        <div class="stat-box">
-            <h3>📊 Statistiche Geografiche</h3>
-            <p><strong>Paesi Totali:</strong> {report['summary']['total_countries']}</p>
-            <p><strong>Paesi Attaccanti:</strong> {len(report['summary']['attacker_countries'])}</p>
-            <p><strong>Paesi Vittime:</strong> {len(report['summary']['victim_countries'])}</p>
-        </div>
-        <div class="stat-box">
-            <h3>🚨 Valutazione Rischio</h3>
-            <p><strong>Livello:</strong>
-                <span class="risk-{report['summary']['risk_assessment']['level'].lower()}">
-                    {report['summary']['risk_assessment']['level']}
-                </span>
-            </p>
-            <p><strong>Fattori:</strong> {', '.join(report['summary']['risk_assessment']['factors'])}</p>
-        </div>
-    </div>
-
-    <h2>🌍 Distribuzione per Paese</h2>
-    <ul>
-"""
-
-            for country, count in list(report['geographic_stats']['countries'].items())[:10]:
-                html_content += f"        <li><strong>{country}:</strong> {count} interazioni</li>\n"
-
-            html_content += """
-    </ul>
-
-    <h2>🎯 Attaccanti per Paese</h2>
-    <ul>
-"""
-
-            for country in report['summary']['attacker_countries']:
-                html_content += f"        <li>{country}</li>\n"
-
-            html_content += """
-    </ul>
-
-    <h2>📈 Visualizzazioni</h2>
-"""
-
-            if 'world_map' in report['visualizations']:
-                html_content += f"""
-    <div class="visualization">
-        <h3>Mappa Globale</h3>
-        {report['visualizations']['world_map']}
-    </div>
-"""
-
-            if 'countries_chart' in report['visualizations']:
-                html_content += f"""
-    <div class="visualization">
-        <h3>Distribuzione per Paese</h3>
-        {report['visualizations']['countries_chart']}
-    </div>
-"""
-
-            html_content += """
-</body>
-</html>
-"""
-
-            html_filename = f"geographic_report_{case_id or 'all'}_{int(time.time())}.html"
-            html_filepath = os.path.join(self.reports_dir, html_filename)
-
-            with open(html_filepath, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-
-            print(f"📄 Report HTML salvato: {html_filepath}")
-
-        except Exception as e:
-            print(f"❌ Errore generazione HTML: {e}")
+            for path, content in outputs:
+                attempted.append(str(path))
+                with path.open('x', encoding='utf-8') as handle:
+                    handle.write(content)
+        except OSError as error:
+            raise OSError(f'Geographic output failed; inspect attempted files {attempted}: {error}') from error
+        return attempted
 
 
-def generate_geographic_report_cli(case_id: str = None, min_confidence: float = 0.0,
-                                   output_format: str = 'both', exclude_countries: Optional[List[str]] = None):
-    """CLI function to generate geographic reports."""
-    try:
-        reporter = GeographicReporter()
-
-        print(f"🔍 Generando report geografico per case_id: {case_id or 'TUTTI'}")
-        print(f"📊 Confidenza minima: {min_confidence}")
-        print(f"📁 Formato output: {output_format}")
-
-        report = reporter.generate_geographic_report(case_id, min_confidence, exclude_countries)
-
-        if report['status'] == 'success':
-            print("✅ Report generato con successo!")
-            print(f"📊 Vittime analizzate: {report['total_victims']}")
-            print(f"🌍 Paesi coinvolti: {report['summary']['total_countries']}")
-            print(f"🚨 Paesi attaccanti: {len(report['summary']['attacker_countries'])}")
-            print(f"⚠️  Livello rischio: {report['summary']['risk_assessment']['level']}")
-
-            if report['summary']['attacker_countries']:
-                print(f"🎯 Attaccanti principali: {', '.join(report['summary']['attacker_countries'][:3])}")
-        else:
-            # Some reports use 'message' for failure reasons; fall back to get()
-            print(f"❌ {report.get('message', 'Errore sconosciuto')}")
-
-    except Exception as e:
-        print(f"❌ Errore generazione report: {e}")
+def generate_geographic_report_cli(case_id=None, min_confidence=0.0, output_format='both',
+                                   exclude_countries=None):
+    from .database import CampaignDatabase
+    validate_geographic_options(case_id, min_confidence, exclude_countries, output_format)
+    database = CampaignDatabase(geographic_database_path(), read_only=True)
+    report = GeographicReporter(database).generate_geographic_report(case_id, min_confidence,
+        exclude_countries, output_format=output_format)
+    print(f"Stored selected rows: {report['total_records']}; geographic observations: {report['total_victims']}")
+    print('Stored claims unverified; identity/risk/interactive maps unavailable')
+    for filename in report['output_files']:
+        print(f'Written: {filename}')
+    return report
 
 
-if __name__ == "__main__":
-    # Test the geographic reporter
-    print("🗺️  Test Report Geografico PAW")
-    print("=" * 40)
-
-    reporter = GeographicReporter()
-    # default: no exclusions when run interactively
-    report = reporter.generate_geographic_report()
-
-    print("\n📊 Risultati Test:")
-    print(f"Status: {report['status']}")
-    if report['status'] == 'success':
-        print(f"Vittime: {report['total_victims']}")
-        print(f"Paesi: {report['summary']['total_countries']}")
-        print(f"Rischio: {report['summary']['risk_assessment']['level']}")
-        print("✅ Report generato con successo!")
-    else:
-        print(f"Errore: {report.get('message', 'Sconosciuto')}")
+if __name__ == '__main__':
+    generate_geographic_report_cli()
