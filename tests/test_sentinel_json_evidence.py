@@ -248,8 +248,7 @@ class SentinelJSONEvidence(unittest.TestCase):
                 self.assertEqual(record[field], default)
                 self.assertEqual(self.evidence(record, field)['raw_storage']['value'], stored[field])
                 self.assertEqual(self.evidence(record, field)['status'], 'invalid_json')
-        with self.assertRaises(sqlite3.OperationalError):
-            reader.get_victims_by_country('StoredCountry')  # Separate SQL JSON admission remains.
+        self.assertEqual(reader.get_victims_by_country('StoredCountry'), [])
         self.assertEqual(Path(writer.db_path).read_bytes(), before)
 
     def test_legacy_absent_column_is_distinct_from_stored_sql_null_and_json_null(self):

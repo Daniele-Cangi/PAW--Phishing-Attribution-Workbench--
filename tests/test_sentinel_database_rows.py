@@ -178,9 +178,8 @@ class SentinelDatabaseRows(unittest.TestCase):
                     for key, default in JSON_DEFAULTS.items():
                         self.assertEqual(records[0][key], default)
                 self.assertEqual(self.stored_row(db, identifier), raw)
-        # Existing JSON SQL admission is separate from row decoding.
-        with self.assertRaises(sqlite3.OperationalError):
-            db.get_victims_by_country('StoredCountry')
+        # Country selection now interprets only unambiguous decoded objects.
+        self.assertEqual(db.get_victims_by_country('StoredCountry'), [])
 
     def test_existing_filters_ordering_and_limits_are_preserved(self):
         db = self.database()
