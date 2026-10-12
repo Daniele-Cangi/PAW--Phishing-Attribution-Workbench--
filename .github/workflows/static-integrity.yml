@@ -245,6 +245,12 @@ jobs:
       - name: Verify actual passive Sentinel CLI status and unavailable runtime state
         run: python tests/integration_sentinel_status_real.py
 
+      - name: Verify actual stored Sentinel forensic export and independent digest
+        run: python -m unittest discover -s tests -p 'test_sentinel_forensic_export.py' -v
+
+      - name: Verify fresh-process passive Sentinel export and default writer admission
+        run: python tests/integration_sentinel_export_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

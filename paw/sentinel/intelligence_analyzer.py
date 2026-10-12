@@ -7,19 +7,22 @@ import json
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .database import CampaignDatabase
-from .ip_analyzer import IPAnalyzer
-from .geographic_reports import GeographicReporter
 
 
 class IntelligenceAnalyzer:
     """Analyze victim intelligence to identify attacker infrastructure."""
 
-    def __init__(self, db_path: str = "sentinel.db", use_proxy: bool = True):
-        self.db = CampaignDatabase(db_path)
-        self.ip_analyzer = IPAnalyzer(use_proxy=use_proxy)
+    def __init__(self, db_path: str = "sentinel.db", use_proxy: bool = True, *, read_only: bool = False):
+        self.db = CampaignDatabase(db_path, read_only=read_only)
+        self.ip_analyzer = None
+        if not read_only:
+            from .ip_analyzer import IPAnalyzer
+            self.ip_analyzer = IPAnalyzer(use_proxy=use_proxy)
 
     def analyze_unanalyzed_victims(self, max_workers: int = 3, case_id: str = None) -> Dict[str, Any]:
         """Analyze all unanalyzed victims and update database."""
+        if self.db.read_only:
+            raise RuntimeError("Saved read-only Sentinel storage cannot run IP analysis")
         victims = self.db.get_unanalyzed_victims()
         if case_id:
             victims = [v for v in victims if v['case_id'] == case_id]
@@ -64,6 +67,8 @@ class IntelligenceAnalyzer:
 
     def _analyze_single_victim(self, victim: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a single victim and update database."""
+        if self.db.read_only:
+            raise RuntimeError("Saved read-only Sentinel storage cannot run IP analysis")
         try:
             # Perform IP analysis
             analysis = self.ip_analyzer.analyze_ip(victim['victim_ip'])
@@ -126,6 +131,8 @@ class IntelligenceAnalyzer:
 
     def _update_attacker_correlations(self, case_id: str = None) -> None:
         """Update attacker correlation data for all victims."""
+        if self.db.read_only:
+            raise RuntimeError("Saved read-only Sentinel storage cannot update correlations")
         try:
             # Get all analyzed victims
             all_victims = self.db.get_victim_intelligence()
@@ -258,22 +265,29 @@ class IntelligenceAnalyzer:
         return recommendations if recommendations else ["Continue monitoring and analysis"]
 
     def export_forensic_data(self, case_id: str = None) -> Dict[str, Any]:
-        """Export victim intelligence data for forensic/legal use."""
+        """Export stored claims with their source; no authentication or custody claim."""
+        if case_id is not None and not isinstance(case_id, str):
+            raise TypeError("case_id must be a string or None")
         victims = self.db.get_victim_intelligence()
-        if case_id:
+        if case_id is not None:
             victims = [v for v in victims if v['case_id'] == case_id]
 
         # Prepare forensic export
         forensic_data = {
+            'schema_version': 1,
+            'evidence_scope': 'stored_rows_unverified',
+            'chain_of_custody': 'not_established',
             'export_time': time.time(),
             'case_id': case_id,
             'total_records': len(victims),
-            'data_integrity_hash': self._calculate_integrity_hash(victims),
+            'data_integrity': {'algorithm': 'sha256', 'scope': 'victims',
+                               'serialization': 'json_sorted_keys_ascii_compact_v1'},
             'victims': []
         }
 
         for victim in victims:
-            # Sanitize for legal export (remove sensitive metadata)
+            # Keep compatibility projections beside the complete named reader
+            # record, including exact typed JSON source and decoding outcomes.
             forensic_victim = {
                 'id': victim['id'],
                 'victim_ip': victim['victim_ip'],
@@ -282,20 +296,28 @@ class IntelligenceAnalyzer:
                 'risk_score': victim['risk_score'],
                 'geolocation': victim.get('geolocation_data', {}),
                 'analyzed_status': victim['analyzed_status'],
+                'stored_record': victim,
                 'evidence_chain': {
                     'captured_at': victim['created_at'],
                     'analyzed_at': victim['updated_at'],
-                    'analysis_method': 'automated_ip_intelligence'
+                    'analysis_method': None,
+                    'scope': 'stored_timestamp_aliases',
+                    'source_fields': {'captured_at': 'created_at', 'analyzed_at': 'updated_at'},
+                    'verified': False
                 }
             }
             forensic_data['victims'].append(forensic_victim)
 
+        forensic_data['data_integrity_hash'] = self._calculate_integrity_hash(forensic_data['victims'])
         return forensic_data
 
     def _calculate_integrity_hash(self, victims: List[Dict[str, Any]]) -> str:
-        """Calculate integrity hash for forensic chain of custody."""
+        """Digest the exported victims list; this does not establish provenance."""
         import hashlib
-        data_str = json.dumps(victims, sort_keys=True, default=str)
+        payload = json.dumps(victims, sort_keys=True, ensure_ascii=True,
+                             separators=(',', ':'), allow_nan=False).encode('ascii')
+        return hashlib.sha256(payload).hexdigest()
+
     def get_interaction_statistics(self, case_id: str = None) -> Dict[str, Any]:
         """Get statistics on classified interactions."""
         victims = self.db.get_victim_intelligence()
@@ -550,6 +572,7 @@ class IntelligenceAnalyzer:
     def generate_geographic_report(self, case_id: str = None, min_confidence: float = 0.0) -> Dict[str, Any]:
         """Generate geographic report for analyzed victims."""
         try:
+            from .geographic_reports import GeographicReporter
             reporter = GeographicReporter(self.db)
             return reporter.generate_geographic_report(case_id, min_confidence)
         except Exception as e:
