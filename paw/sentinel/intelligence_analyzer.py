@@ -181,88 +181,87 @@ class IntelligenceAnalyzer:
             print(f"Error updating correlations: {e}")
 
     def generate_intelligence_report(self, case_id: str = None) -> Dict[str, Any]:
-        """Generate comprehensive intelligence report."""
-        # Get victims, optionally filtered by case
-        all_victims = self.db.get_victim_intelligence()
-        if case_id:
-            all_victims = [v for v in all_victims if v['case_id'] == case_id]
+        """Describe selected stored rows without inferring identity or risk."""
+        records = self.db.get_forensic_victim_intelligence(case_id)
+        # Match the strict export boundary: unsupported native SQLite values
+        # abort, rather than being stringified, dropped or made healthy defaults.
+        json.dumps(records, allow_nan=False)
+        analyzed = [r for r in records if r['analyzed_status'] == 'analyzed']
+        numeric_ids, unusable_scores, threshold_ids = [], [], []
+        risk_ids, unusable_risks, country_ids, unusable_countries = [], [], [], []
+        risk_stats, geo_stats, status_stats, unusable_statuses = {}, {}, {}, []
+        for record in records:
+            identifier = record['id']
+            status = record['analyzed_status']
+            if isinstance(status, str):
+                status_stats[status] = status_stats.get(status, 0) + 1
+            else:
+                unusable_statuses.append(identifier)
+            score = record['risk_score']
+            numeric = isinstance(score, (int, float)) and not isinstance(score, bool)
+            if numeric:
+                numeric_ids.append(identifier)
+                if score >= 7:
+                    threshold_ids.append(identifier)
+            else:
+                unusable_scores.append(identifier)
+            if status != 'analyzed':
+                continue
+            if numeric:
+                key = str(score)
+                risk_stats[key] = risk_stats.get(key, 0) + 1
+                risk_ids.append(identifier)
+            else:
+                unusable_risks.append(identifier)
+            geo = record['geolocation_data']
+            source = record['json_evidence']['fields']['geolocation_data']
+            country = geo.get('country') if isinstance(geo, dict) else None
+            if source['status'] == 'decoded' and isinstance(country, str) and country.strip():
+                geo_stats[country] = geo_stats.get(country, 0) + 1
+                country_ids.append(identifier)
+            else:
+                unusable_countries.append(identifier)
 
-        # Calculate statistics
-        total_victims = len(all_victims)
-        analyzed_victims = len([v for v in all_victims if v['analyzed_status'] == 'analyzed'])
-        high_risk_victims = len([v for v in all_victims if v.get('risk_score', 0) >= 7])
-        recent_victims_24h = len([v for v in all_victims if self._is_recent_victim(v.get('created_at', ''))])
-
-        # Status breakdown
-        status_stats = {}
-        for victim in all_victims:
-            status = victim.get('analyzed_status', 'unknown')
-            status_stats[status] = status_stats.get(status, 0) + 1
-
-        # Risk distribution
-        risk_stats = {}
-        for victim in all_victims:
-            if victim['analyzed_status'] == 'analyzed':
-                risk = victim.get('risk_score', 0)
-                risk_stats[risk] = risk_stats.get(risk, 0) + 1
-
-        correlations = self.db.get_attacker_correlations()
-        # Filter correlations by case if specified
-        if case_id:
-            # This is a simplified filter - in production you'd want to filter correlations by victims in the case
-            pass
-
-        # Geographic analysis
-        geo_stats = {}
-        for victim in [v for v in all_victims if v['analyzed_status'] == 'analyzed']:
-            geo = victim.get('geolocation_data', {})
-            country = geo.get('country', 'Unknown')
-            if country not in geo_stats:
-                geo_stats[country] = 0
-            geo_stats[country] += 1
-
-        report = {
+        return {
+            'schema_version': 1,
+            'status': 'success',
+            'evidence_scope': 'stored_rows_unverified',
             'generated_at': time.time(),
             'case_id': case_id,
+            'source_records': records,
             'summary': {
-                'total_victims': total_victims,
-                'analyzed_victims': analyzed_victims,
-                'high_risk_victims': high_risk_victims,
-                'recent_victims_24h': recent_victims_24h
+                'total_victims': len(records),
+                'analyzed_victims': len(analyzed),
+                'stored_score_at_least_7': len(threshold_ids),
+                'high_risk_victims': None,
+                'recent_victims_24h': None
             },
-            'attacker_infrastructure': correlations,
+            'summary_scope': 'Stored row count, literal analyzed status and numeric score threshold; not unique people or verified analysis/risk.',
+            'status_breakdown': status_stats,
+            'attacker_infrastructure': [],
             'geographic_distribution': geo_stats,
             'risk_distribution': risk_stats,
-            'recommendations': self._generate_recommendations(correlations, [v for v in all_victims if v.get('risk_score', 0) >= 7])
+            'aggregation_evidence': {
+                'status_breakdown': {'source_field': 'analyzed_status',
+                    'unusable_ids': unusable_statuses},
+                'stored_score_at_least_7': {'source_field': 'risk_score',
+                    'numeric_ids': numeric_ids, 'counted_ids': threshold_ids,
+                    'unusable_ids': unusable_scores},
+                'risk_distribution': {'source_field': 'risk_score',
+                    'scope': 'rows_with_stored_analyzed_status', 'counted_ids': risk_ids,
+                    'unusable_ids': unusable_risks},
+                'geographic_distribution': {'source_field': 'geolocation_data.country',
+                    'scope': 'rows_with_stored_analyzed_status', 'counted_ids': country_ids,
+                    'unusable_ids': unusable_countries, 'verified': False}
+            },
+            'recommendations': [],
+            'unavailable': {
+                'high_risk_victims': 'Stored scores are not a calibrated risk assessment.',
+                'recent_victims_24h': 'No validated timestamp interpretation is defined; original created_at values are retained.',
+                'attacker_infrastructure': 'IP similarity, location and stored correlation labels do not establish attacker infrastructure.',
+                'recommendations': 'No operational action is justified by these unverified stored claims.'
+            }
         }
-
-        return report
-
-    def _generate_recommendations(self, correlations: List[Dict[str, Any]], high_risk_victims: List[Dict[str, Any]]) -> List[str]:
-        """Generate actionable recommendations based on analysis."""
-        recommendations = []
-
-        # Network-based recommendations
-        for correlation in correlations:
-            if correlation['victim_count'] >= 5:
-                recommendations.append(
-                    f"URGENT: Investigate network {correlation['network']} - "
-                    f"{correlation['victim_count']} victims from {len(correlation['countries'])} countries"
-                )
-
-        # Geographic recommendations
-        if len(high_risk_victims) > 10:
-            recommendations.append(
-                "Scale up monitoring: High volume of suspicious activity detected"
-            )
-
-        # Risk-based recommendations
-        if not correlations:
-            recommendations.append(
-                "Continue collecting victim data: Need more samples for correlation analysis"
-            )
-
-        return recommendations if recommendations else ["Continue monitoring and analysis"]
 
     def export_forensic_data(self, case_id: str = None) -> Dict[str, Any]:
         """Export stored claims with their source; no authentication or custody claim."""
