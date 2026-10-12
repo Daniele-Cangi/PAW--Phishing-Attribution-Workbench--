@@ -239,6 +239,12 @@ jobs:
       - name: Verify stored Sentinel JSON sources and explicit decoding outcomes
         run: python -m unittest discover -s tests -p 'test_sentinel_json_evidence.py' -v
 
+      - name: Verify actual Sentinel stored counts and explicit instance-flag scope
+        run: python -m unittest discover -s tests -p 'test_sentinel_status.py' -v
+
+      - name: Verify actual passive Sentinel CLI status and unavailable runtime state
+        run: python tests/integration_sentinel_status_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5
