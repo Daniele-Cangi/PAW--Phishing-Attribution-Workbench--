@@ -251,6 +251,12 @@ jobs:
       - name: Verify fresh-process passive Sentinel export and default writer admission
         run: python tests/integration_sentinel_export_real.py
 
+      - name: Verify selected Sentinel intelligence sources and unavailable interpretations
+        run: python -m unittest discover -s tests -p 'test_sentinel_intelligence_report.py' -v
+
+      - name: Verify actual passive intelligence JSON in fresh processes
+        run: python tests/integration_sentinel_intelligence_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5
