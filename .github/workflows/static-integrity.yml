@@ -284,6 +284,9 @@ jobs:
       - name: Verify actual local-file CLI checks preserve unrelated Sentinel sources
         run: python tests/integration_sentinel_local_files_real.py
 
+      - name: Verify offline campaign argument admission and actual stored mutations
+        run: python tests/integration_sentinel_campaign_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

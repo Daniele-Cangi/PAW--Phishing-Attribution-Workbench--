@@ -400,6 +400,11 @@ For help: paw help <command>
             from .core.trace import update_report
             update_report(args.case)
         elif args.cmd == "monitor":
+            if args.action == "add" and (not args.case or not args.case.strip() or
+                                         not args.url or not args.url.strip()):
+                raise ValueError("--case and --url must be nonblank for add action")
+            if args.action == "remove" and (not args.case or not args.case.strip()):
+                raise ValueError("--case must be nonblank for remove action")
             if args.action in ("start", "stop"):
                 raise RuntimeError("Sentinel service control is unavailable. "
                                    f"'{args.action}' has no supervised persistent service "
@@ -460,28 +465,32 @@ For help: paw help <command>
                     print(f"   {status_emoji} {case['case_id']}: {case['file_count']} files - {case['integrity_message']}")
 
                 return
-            from .sentinel import SentinelMonitor
-            monitor = SentinelMonitor()
-
             if args.action == "add":
-                if not args.case or not args.url:
-                    print("❌ Error: --case and --url required for add action")
-                    sys.exit(1)
-                campaign_id = monitor.add_campaign(args.case, args.url)
+                from .sentinel import CampaignDatabase, SentinelConfig
+                database = CampaignDatabase(SentinelConfig().get("storage.database_path"))
+                campaign_id = database.add_campaign(args.case, args.url)
                 print(f"✅ Campaign added: {campaign_id}")
             elif args.action == "remove":
-                if not args.case:
-                    print("❌ Error: --case required for remove action")
-                    sys.exit(1)
-                # Find campaign by case_id
-                campaigns = monitor.get_all_campaigns()
-                campaign = next((c for c in campaigns if c['case_id'] == args.case), None)
-                if campaign:
-                    monitor.remove_campaign(campaign['id'])
-                    print(f"✅ Campaign removed: {campaign['id']}")
-                else:
-                    print(f"❌ Campaign not found for case: {args.case}")
+                from .sentinel import CampaignDatabase, SentinelConfig
+                path = SentinelConfig().get("storage.database_path")
+                saved = CampaignDatabase(path, read_only=True)
+                campaigns = [c for c in saved.get_active_campaigns() if c['case_id'] == args.case]
+                if not campaigns:
+                    raise ValueError(f"Active campaign not found for case: {args.case}")
+                if len(campaigns) != 1:
+                    raise ValueError(f"Multiple active campaigns for case: {args.case}")
+                campaign = campaigns[0]
+                database = CampaignDatabase(path)
+                with database.connection() as connection:
+                    changed = connection.execute(
+                        "UPDATE campaigns SET status='removed' WHERE id=? AND case_id=? AND status='active'",
+                        (campaign['id'], args.case)).rowcount
+                    if changed != 1:
+                        raise RuntimeError("Campaign changed before removal; no active campaign removed")
+                print(f"✅ Campaign removed: {campaign['id']}")
             elif args.action == "check":
+                from .sentinel import SentinelMonitor
+                monitor = SentinelMonitor()
                 results = monitor.check_now(args.campaign if hasattr(args, 'campaign') and args.campaign else None)
                 if results:
                     print("🔍 Check Results:")
