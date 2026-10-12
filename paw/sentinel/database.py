@@ -496,6 +496,20 @@ class CampaignDatabase:
 
             return [self._victim_row_to_dict(row) for row in rows]
 
+    def get_forensic_victim_intelligence(self, case_id: str = None) -> List[Dict[str, Any]]:
+        """Read every selected stored row without the interactive listing cap."""
+        if case_id is not None and not isinstance(case_id, str):
+            raise TypeError('case_id must be a string or None')
+        with self._json_read_connection() as conn:
+            query = 'SELECT * FROM victim_intelligence'
+            params = ()
+            if case_id is not None:
+                query += ' WHERE case_id COLLATE BINARY = ?'
+                params = (case_id,)
+            query += ' ORDER BY click_time DESC, id DESC'
+            rows = conn.execute(query, params).fetchall()
+            return [self._victim_row_to_dict(row) for row in rows]
+
     def get_unanalyzed_victims(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get victims that haven't been fully analyzed yet."""
         with self._json_read_connection() as conn:

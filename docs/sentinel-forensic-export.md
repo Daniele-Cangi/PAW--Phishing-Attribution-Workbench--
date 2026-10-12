@@ -1,7 +1,7 @@
 # Stored Sentinel forensic export and verifiable digest
 
-This S11 correction follows merged PR48 (`eaebec9`) and changes one production
-module, `paw/sentinel/intelligence_analyzer.py`. Actual saved SQLite export
+This S11 correction follows merged PR48 (`eaebec9`) and changes two production
+modules: the analyzer and its database export reader. Actual saved SQLite export
 reproduced a null `data_integrity_hash`: the helper serialized data but never
 returned a digest. The projected output discarded WHOIS, user agent, metadata,
 correlation, interaction labels/confidence/indicators and JSON source/outcomes.
@@ -29,8 +29,12 @@ The export is now complete and unredacted for these reader fields, including
 metadata/user agents; it is not the previous metadata-sanitized projection.
 It returns a dictionary for the caller to save; it does not publish or save files.
 
-`case_id=None` selects all returned rows; any string, including the empty string,
-selects that literal stored case identifier. Non-string identifiers raise an
+The export uses a dedicated uncapped database reader rather than the interactive
+listing's newest-100 window. `case_id=None` selects every stored row; any string,
+including the empty string, selects that literal stored case identifier through
+a bound SQL parameter with binary comparison, before row decoding. The selected
+list is ordered by stored `click_time` descending, then `id` descending for ties.
+Non-string identifiers raise an
 error. A legitimate empty selection returns zero records. Missing, corrupt or
 incomplete storage does not silently become an empty healthy export. Database
 reads remain unbounded by case/page budgets in this correction, and a reader
@@ -70,25 +74,33 @@ list. Extending typed raw evidence to all non-JSON columns is separate work.
 
 ## Checks and remaining work
 
-Seven actual SQLite contracts verify complete record equality through a JSON
+Nine actual SQLite contracts verify complete record equality through a JSON
 file round-trip, independent digest recomputation and tampering, exact case
 selection and the known empty-list digest, all six JSON fields' decoding/source
 states, invalid TEXT bytes, all sixteen original/partial layouts without
 migration, missing/corrupt/incomplete storage, strict unsupported-value failures,
-and passive collector rejection/later journal admission. The earlier 33
+and passive collector rejection/later journal admission. The review regression
+uses 213 stored rows with 105 rows in each of two cases: all rows and an older
+case outside the newest-100 window are retained, including old invalid JSON TEXT
+source bytes. Modifying the oldest record changes the full-list digest. Literal
+empty/quoted/case-sensitive identifiers are checked. Selection happens before
+decoding unrelated invalid rows; errors in selected rows still abort an export.
+The earlier 33
 Sentinel contracts remain in place.
 
 A fresh-process integration guards saved export import, construction, reading
 and file serialization without collector, requests or plotting imports, and
-verifies exact returned sources plus SHA-256 after reading the actual JSON file.
+verifies exact returned sources plus SHA-256 after reading the actual JSON file:
+210 rows in a full export and all 105 older-case rows in a separate saved export.
+Expected IDs come from the fixture and individual lookups, not a capped listing.
 Missing storage remains absent. The default writer constructor is separately
 checked after requests bootstrap; no IP analysis is executed. Zero blocked
 operations under the application guard do not establish OS isolation or certify
 all dependency cold imports. WAL/pending journals still require a separate
 supported saved-storage workflow; external writers are not frozen.
 
-On local Windows/Python 3.13, all 40 Sentinel contracts pass. The complete serial
-suite passes 660 of 668 tests with eight platform exclusions. Existing original-EML
+On local Windows/Python 3.13, all 42 Sentinel contracts pass. The complete serial
+suite passes 662 of 670 tests with eight platform exclusions. Existing original-EML
 CLI/HTTP no-egress regressions, stopped exports and supervisor-crash recovery pass.
 A real rebuilt wheel matches metadata/entry points and all 90 package Python
 sources; this is not a clean installation or an attribution-accuracy evaluation.

@@ -268,9 +268,7 @@ class IntelligenceAnalyzer:
         """Export stored claims with their source; no authentication or custody claim."""
         if case_id is not None and not isinstance(case_id, str):
             raise TypeError("case_id must be a string or None")
-        victims = self.db.get_victim_intelligence()
-        if case_id is not None:
-            victims = [v for v in victims if v['case_id'] == case_id]
+        victims = self.db.get_forensic_victim_intelligence(case_id)
 
         # Prepare forensic export
         forensic_data = {

@@ -125,6 +125,62 @@ class SentinelForensicExport(unittest.TestCase):
             analyzer.export_forensic_data(1)
         self.assertEqual(Path(writer.db_path).read_bytes(), before)
 
+    def test_export_includes_old_cases_and_more_than_100_rows_per_case(self):
+        writer = self.database()
+        literal = "case' OR 1=1 --"
+        cases = ['older-case'] * 105 + ['', None, literal] + ['newer-case'] * 105
+        expected = {}
+        with writer.connection() as conn:
+            for index, case in enumerate(cases):
+                cursor = conn.execute('INSERT INTO victim_intelligence '
+                    '(victim_ip, victim_ua, click_time, phishing_url, case_id, metadata) '
+                    'VALUES (?,?,?,?,?,?)', ('192.0.2.1', 'stored UA', f'{index:04}',
+                    'https://example.invalid/stored', case, '{"source":1}'))
+                expected.setdefault(case, []).append(cursor.lastrowid)
+            oldest = expected['older-case'][0]
+            conn.execute("UPDATE victim_intelligence SET metadata=CAST(X'80' AS TEXT) WHERE id=?",
+                (oldest,))
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM victim_intelligence').fetchone()[0], 213)
+        analyzer = IntelligenceAnalyzer(writer.db_path, read_only=True)
+        before = Path(writer.db_path).read_bytes()
+        # The interactive listing keeps its existing cap; it cannot be the
+        # completeness oracle for the export.
+        self.assertEqual(len(analyzer.db.get_victim_intelligence()), 100)
+        for case in (None, 'older-case', 'newer-case', '', literal, 'OLDER-CASE', 'absent-case'):
+            with self.subTest(case=case):
+                identifiers = list(range(213, 0, -1)) if case is None else list(reversed(expected.get(case, [])))
+                report = analyzer.export_forensic_data(case)
+                self.assertEqual([v['id'] for v in report['victims']], identifiers)
+                self.assertEqual(report['total_records'], len(identifiers))
+                self.assert_digest(report)
+                if oldest in identifiers:
+                    record = next(v['stored_record'] for v in report['victims'] if v['id'] == oldest)
+                    self.assertEqual(record, analyzer.db.get_victim_intelligence(victim_id=oldest)[0])
+                    evidence = record['json_evidence']['fields']['metadata']
+                    self.assertEqual(evidence['status'], 'invalid_encoding')
+                    self.assertEqual(evidence['raw_storage']['value'], 'gA==')
+        self.assertEqual(Path(writer.db_path).read_bytes(), before)
+        original = analyzer.export_forensic_data()['data_integrity_hash']
+        with writer.connection() as conn:
+            conn.execute('UPDATE victim_intelligence SET metadata=? WHERE id=?', ('{"changed":true}', oldest))
+        self.assertNotEqual(analyzer.export_forensic_data()['data_integrity_hash'], original)
+
+    def test_case_selection_precedes_decoding_unrelated_invalid_rows(self):
+        writer, analyzer = self.seed()
+        other = writer.add_victim_intelligence('192.0.2.2', 'stored UA',
+            'https://example.invalid/other', case_id='other-case')
+        with writer.connection() as conn:
+            conn.execute("UPDATE victim_intelligence SET victim_ua=CAST(X'80' AS TEXT) WHERE id=?", (other,))
+        before = Path(writer.db_path).read_bytes()
+        report = analyzer.export_forensic_data('source-case')
+        self.assertEqual([v['id'] for v in report['victims']], [self.identifier])
+        self.assert_digest(report)
+        # A full export still fails explicitly on an unsupported selected row;
+        # it must not hide that row by skipping it.
+        with self.assertRaises(sqlite3.OperationalError):
+            analyzer.export_forensic_data()
+        self.assertEqual(Path(writer.db_path).read_bytes(), before)
+
     def test_original_and_partial_layouts_are_exported_without_initialization_or_migration(self):
         layouts = []
         for size in range(4):

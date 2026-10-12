@@ -18,7 +18,7 @@ def snapshot(root):
             for p in root.rglob('*')}
 
 
-def invoke(database, output, mode):
+def invoke(database, output, mode, case_id=None):
     code = """import json, sys
 from pathlib import Path
 sys.path.insert(0, %r)
@@ -43,7 +43,7 @@ try:
                 assert analyzer.ip_analyzer is not None
             else:
                 assert analyzer.ip_analyzer is None
-            report = analyzer.export_forensic_data()
+            report = analyzer.export_forensic_data(%r)
             Path(%r).write_text(json.dumps(report, allow_nan=False), encoding='utf-8')
 finally:
     assert not violations(), violations()
@@ -55,7 +55,7 @@ finally:
         assert 'paw.sentinel.ip_analyzer' not in sys.modules
         assert 'requests' not in sys.modules
 print('SENTINEL_EXPORT_NO_BLOCKED_OPERATIONS')
-""" % (str(REPO), mode, str(database), str(database), str(output))
+""" % (str(REPO), mode, str(database), str(database), case_id, str(output))
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', PYTHONUTF8='1')
     env.pop('PYTHONPATH', None)
     result = subprocess.run([sys.executable, '-X', 'utf8', '-c', code], cwd=database.parent,
@@ -68,23 +68,34 @@ def main():
     checks = []
     with tempfile.TemporaryDirectory(prefix='paw-export-process-') as temporary:
         root = Path(temporary)
-        for mode in ('saved', 'missing', 'writer'):
+        for mode in ('saved', 'saved-case', 'missing', 'writer'):
             work = root / mode
             work.mkdir()
             database = work / 'stored # Ω %.db'
             output = root / f'{mode}-export.json'
             source = []
-            if mode == 'saved':
+            case_id = 'older-case' if mode == 'saved-case' else None
+            if mode.startswith('saved'):
                 with offline_policy():
                     writer = CampaignDatabase(str(database))
-                    writer.add_victim_intelligence('192.0.2.1', 'stored UA Ω',
-                        'https://example.invalid/stored', case_id='source-case')
                     with writer.connection() as conn:
-                        conn.execute("UPDATE victim_intelligence SET metadata=CAST(X'80' AS TEXT)")
-                    source = CampaignDatabase(str(database), read_only=True).get_victim_intelligence()
+                        for index in range(210):
+                            conn.execute('INSERT INTO victim_intelligence '
+                                '(victim_ip, victim_ua, click_time, phishing_url, case_id) '
+                                'VALUES (?,?,?,?,?)', ('192.0.2.1', 'stored UA Ω', f'{index:04}',
+                                'https://example.invalid/stored', 'older-case' if index < 105 else 'newer-case'))
+                        conn.execute("UPDATE victim_intelligence SET metadata=CAST(X'80' AS TEXT) WHERE id=1")
+                        assert conn.execute('SELECT COUNT(*) FROM victim_intelligence').fetchone()[0] == 210
+                    # Independent fixture IDs and single-row lookups avoid an
+                    # oracle that could share the export's listing truncation.
+                    identifiers = range(105, 0, -1) if case_id else range(210, 0, -1)
+                    reader = CampaignDatabase(str(database), read_only=True)
+                    source = [reader.get_victim_intelligence(victim_id=identifier)[0]
+                              for identifier in identifiers]
+                    assert len(reader.get_victim_intelligence()) == 100
                     assert not violations(), violations()
             before = snapshot(work)
-            invoke(database, output, mode)
+            invoke(database, output, mode, case_id)
             if mode != 'writer':
                 assert snapshot(work) == before, mode
             else:
@@ -95,11 +106,12 @@ def main():
                 report = json.loads(output.read_text(encoding='utf-8'))
                 assert [v['stored_record'] for v in report['victims']] == source
                 assert report['total_records'] == len(source)
+                assert report['case_id'] == case_id
                 payload = json.dumps(report['victims'], sort_keys=True, ensure_ascii=True,
                     separators=(',', ':'), allow_nan=False).encode('ascii')
                 assert report['data_integrity_hash'] == hashlib.sha256(payload).hexdigest()
                 assert report['chain_of_custody'] == 'not_established'
-            checks.append({'case': mode, 'status': 'passed',
+            checks.append({'case': mode, 'status': 'passed', 'records': len(source),
                 'admission': 'explicit default writer' if mode == 'writer' else 'passive saved source'})
     print(json.dumps({'status': 'passed', 'checks': checks,
         'network_scope': 'Saved export module import/construction/read/serialization under application offline guard; zero blocked attempts, no collector/plot imports. Default writer constructor tested after requests bootstrap; no IP analysis run.',
