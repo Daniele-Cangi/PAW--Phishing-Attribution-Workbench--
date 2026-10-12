@@ -315,78 +315,88 @@ class IntelligenceAnalyzer:
                              separators=(',', ':'), allow_nan=False).encode('ascii')
         return hashlib.sha256(payload).hexdigest()
 
+    def _stored_interaction_rows(self, case_id):
+        records = self.db.get_forensic_victim_intelligence(case_id)
+        json.dumps(records, allow_nan=False)
+        return records
+
+    @staticmethod
+    def _usable_stored_confidence(value):
+        return (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and 0 <= value <= 1)
+
     def get_interaction_statistics(self, case_id: str = None) -> Dict[str, Any]:
-        """Get statistics on classified interactions."""
-        victims = self.db.get_victim_intelligence()
-        if case_id:
-            victims = [v for v in victims if v['case_id'] == case_id]
-
-        # Analyze interactions
-        interaction_stats = {
-            'total_interactions': len(victims),
-            'classified_interactions': 0,
-            'interaction_types': {},
-            'high_confidence_attacker_interactions': 0,
-            'suspicious_interactions': 0,
-            'potential_attacker_ips': []
-        }
-
-        for victim in victims:
-            interaction_type = victim.get('interaction_type', 'unknown')
-            confidence = victim.get('interaction_confidence', 0.0)
-
-            if interaction_type != 'unknown':
-                interaction_stats['classified_interactions'] += 1
-
-            if interaction_type not in interaction_stats['interaction_types']:
-                interaction_stats['interaction_types'][interaction_type] = 0
-            interaction_stats['interaction_types'][interaction_type] += 1
-
-            # Track high-confidence attacker interactions
-            if interaction_type in ['attacker_test', 'potential_attacker'] and confidence >= 0.7:
-                interaction_stats['high_confidence_attacker_interactions'] += 1
-                interaction_stats['potential_attacker_ips'].append({
-                    'ip': victim['victim_ip'],
-                    'type': interaction_type,
-                    'confidence': confidence,
-                    'indicators': victim.get('interaction_indicators', [])
-                })
-
-            # Track suspicious interactions
-            if interaction_type in ['automated_or_suspicious', 'suspicious_ip']:
-                interaction_stats['suspicious_interactions'] += 1
-
-        return interaction_stats
+        """Describe complete selected stored labels, without identity inference."""
+        records = self._stored_interaction_rows(case_id)
+        label_ids, unusable_labels, classified_ids = {}, [], []
+        numeric_ids, unusable_confidences, candidate_ids, suspicious_ids = [], [], [], []
+        for record in records:
+            identifier, label = record['id'], record['interaction_type']
+            confidence = record['interaction_confidence']
+            usable_label = isinstance(label, str) and bool(label.strip())
+            if usable_label:
+                label_ids.setdefault(label, []).append(identifier)
+                if label != 'unknown':
+                    classified_ids.append(identifier)
+            else:
+                unusable_labels.append(identifier)
+            numeric = self._usable_stored_confidence(confidence)
+            (numeric_ids if numeric else unusable_confidences).append(identifier)
+            if label in ('attacker_test', 'potential_attacker') and numeric and confidence >= 0.7:
+                candidate_ids.append(identifier)
+            if label in ('automated_or_suspicious', 'suspicious_ip'):
+                suspicious_ids.append(identifier)
+        return {
+            'schema_version': 1, 'status': 'success', 'generated_at': time.time(),
+            'case_id': case_id, 'evidence_scope': 'stored_rows_unverified',
+            'source_records': records, 'total_interactions': len(records),
+            'classified_interactions': len(classified_ids),
+            'interaction_types': {label: len(ids) for label, ids in label_ids.items()},
+            'stored_candidate_score_at_least_0_7': len(candidate_ids),
+            'stored_suspicious_label_rows': len(suspicious_ids),
+            'aggregation_evidence': {
+                'interaction_types': {'source_field': 'interaction_type',
+                    'source_ids': label_ids, 'unusable_ids': unusable_labels},
+                'classified_interactions': {'counted_ids': classified_ids,
+                    'scope': 'Nonblank stored labels other than literal unknown; not verified classification.'},
+                'stored_confidence': {'source_field': 'interaction_confidence',
+                    'numeric_0_to_1_ids': numeric_ids, 'unusable_ids': unusable_confidences},
+                'stored_candidate_score_at_least_0_7': {'counted_ids': candidate_ids,
+                    'labels': ['attacker_test', 'potential_attacker'], 'verified': False},
+                'stored_suspicious_label_rows': {'counted_ids': suspicious_ids,
+                    'labels': ['automated_or_suspicious', 'suspicious_ip'], 'verified': False}},
+            'high_confidence_attacker_interactions': None, 'suspicious_interactions': None,
+            'potential_attacker_ips': [],
+            'unavailable': {
+                'high_confidence_attacker_interactions': 'Stored labels/scores do not identify attackers or calibrated confidence.',
+                'suspicious_interactions': 'Stored labels do not independently establish suspicious behavior.',
+                'potential_attacker_ips': 'Stored IP/interaction labels do not establish attacker identity.'},
+            'count_scope': 'Stored rows and literal labels/scores; not unique people or verified behavior.'}
 
     def get_potential_attacker_interactions(self, case_id: str = None, min_confidence: float = 0.6) -> List[Dict[str, Any]]:
-        """Get interactions classified as potential attacker activity."""
-        victims = self.db.get_victim_intelligence()
-        if case_id:
-            victims = [v for v in victims if v['case_id'] == case_id]
-
-        attacker_interactions = []
-        for victim in victims:
-            interaction_type = victim.get('interaction_type', 'unknown')
-            confidence = victim.get('interaction_confidence', 0.0)
-
-            if (interaction_type in ['attacker_test', 'potential_attacker', 'automated_or_suspicious', 'suspicious_ip']
-                and confidence >= min_confidence):
-
-                attacker_interactions.append({
-                    'id': victim['id'],
-                    'ip': victim['victim_ip'],
-                    'interaction_type': interaction_type,
-                    'confidence': confidence,
-                    'indicators': victim.get('interaction_indicators', []),
-                    'geolocation': victim.get('geolocation_data', {}),
-                    'risk_score': victim.get('risk_score', 0),
-                    'click_time': victim['click_time'],
-                    'case_id': victim['case_id']
-                })
-
-        # Sort by confidence descending
-        attacker_interactions.sort(key=lambda x: x['confidence'], reverse=True)
-        return attacker_interactions
+        """Legacy name: select unverified stored candidate labels and numeric scores."""
+        if not self._usable_stored_confidence(min_confidence):
+            raise ValueError('min_confidence must be a finite number between 0 and 1')
+        records = self._stored_interaction_rows(case_id)
+        labels = ('attacker_test', 'potential_attacker', 'automated_or_suspicious', 'suspicious_ip')
+        candidates = []
+        for record in records:
+            confidence = record['interaction_confidence']
+            if (record['interaction_type'] in labels and self._usable_stored_confidence(confidence)
+                    and confidence >= min_confidence):
+                candidates.append({
+                    'id': record['id'], 'ip': record['victim_ip'],
+                    'interaction_type': record['interaction_type'], 'confidence': confidence,
+                    'indicators': record['interaction_indicators'], 'geolocation': record['geolocation_data'],
+                    'risk_score': record['risk_score'], 'click_time': record['click_time'],
+                    'case_id': record['case_id'], 'source_record': record,
+                    'evidence_scope': 'stored_label_candidates_unverified', 'verified': False,
+                    'selection': {'labels': list(labels), 'min_confidence': min_confidence,
+                        'score_scope': 'Stored numeric score in 0..1; not calibrated confidence.'},
+                    'unavailable': {'identity': 'Stored labels and scores do not establish attacker identity.',
+                        'risk': 'Stored risk_score is not a calibrated risk assessment.'}})
+        # Stable ties retain the reader's click_time DESC, id DESC source order.
+        return sorted(candidates, key=lambda row: row['confidence'], reverse=True)
 
     def classify_interaction_type(self, victim_data: Dict[str, Any]) -> str:
         """Classify interaction as victim, attacker, or suspicious."""
