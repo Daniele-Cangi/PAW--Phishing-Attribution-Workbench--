@@ -49,12 +49,19 @@ No Plotly/pandas renderer, collector or remote map assets are imported here.
 ## Output and admission
 
 CLI admission validates options before opening the configured Sentinel database
-with `read_only=True`. `map` rejects before database or directory initialization.
+with `read_only=True`. Geographic CLI and the module CLI helper use the default
+`sentinel.db` only when `sentinel_config.json` is absent. An existing unreadable,
+malformed, duplicate-key or invalid configuration propagates failure before
+opening storage; it must contain a nonblank string `storage.database_path`.
+Other Sentinel configuration consumers retain their existing behavior.
+`map` rejects before database or directory initialization.
 Statistics and reporter construction create no output directories. Explicit
 report generation honors `json`, `html` or `both`, under `reports/geographic` by
 default. JSON contains complete sources and observations. HTML is passive escaped
 text, a full country table and complete escaped JSON, with a restrictive CSP and
-no scripts, links, images, iframes or external assets. It does not render email
+no scripts, links, images, iframes or external assets. Lone surrogates in displayed
+labels use literal backslash escapes; valid Unicode stays unchanged and complete
+JSON preserves the original values with ASCII escapes. It does not render email
 HTML or navigate stored URLs.
 
 Filenames use independent UUID stems and exclusive creation; case labels never
@@ -78,7 +85,7 @@ The Python no-egress guard is application policy, not OS isolation.
 older-case selection, legacy layouts, typed malformed JSON, confidence and country
 filters, coordinate boundaries, aggregate provenance, hostile labels, exclusive
 output names and failure preservation. `integration_sentinel_geographic_real.py`
-checks 20 fresh actual CLI/API scenarios, requested files and unchanged source
+checks 25 fresh actual CLI/API/helper scenarios, requested files and unchanged source
 trees, including cold guarded API import and unavailable maps before I/O.
 CLI bootstrap precedes its Python guard; API import is guarded from entry.
 These constructed storage fixtures verify execution and source fidelity, not

@@ -7,7 +7,7 @@ import sqlite3
 import unittest
 
 from paw.sentinel.database import CampaignDatabase
-from paw.sentinel.geographic_reports import GeographicReporter
+from paw.sentinel.geographic_reports import GeographicReporter, geographic_database_path
 from paw.sentinel.intelligence_analyzer import IntelligenceAnalyzer
 import test_sentinel_database_rows as source_rows
 
@@ -211,6 +211,52 @@ class SentinelGeographicReport(unittest.TestCase):
         self.assertEqual(Path(writer.db_path).read_bytes(), before)
         with self.assertRaises(RuntimeError):
             GeographicReporter()
+
+    def test_lone_surrogates_remain_lossless_in_json_and_do_not_break_html(self):
+        writer = self.database()
+        country = 'stored\ud800<\udfff> Ω 😀'
+        self.add(writer, json.dumps({'country': country}), case='stored Ω 😀')
+        reporter = self.reporter(writer)
+        before = Path(writer.db_path).read_bytes()
+        report = reporter.generate_geographic_report('stored Ω 😀', output_format='both')
+        self.assertEqual(report['geographic_stats']['countries'], {country: 1})
+        for filename in report['output_files']:
+            text = Path(filename).read_text(encoding='utf-8')
+            if filename.endswith('.json'):
+                self.assertEqual(json.loads(text)['geographic_stats']['countries'], {country: 1})
+            else:
+                self.assertIn('stored\\ud800&lt;\\udfff&gt; Ω 😀', text)
+                self.assertIn('Case: stored Ω 😀', text)
+                self.assertNotIn('\ud800', text)
+                self.assertNotIn('\udfff', text)
+        self.assertEqual(Path(writer.db_path).read_bytes(), before)
+        body = {k: v for k, v in report.items() if k != 'output_files'}
+        body['case_id'] = 'case\ud800<\udfff>'
+        html = reporter._generate_html_report(body)
+        self.assertIn('Case: case\\ud800&lt;\\udfff&gt;', html)
+        html.encode('utf-8')
+
+    def test_config_defaults_only_when_absent_and_never_hides_existing_source_errors(self):
+        config = self.root / 'sentinel_config.json'
+        self.assertEqual(geographic_database_path(config), 'sentinel.db')
+        for invalid in ('null', 'false', '[]', '{}', '{broken',
+                        '{"storage":{}}', '{"storage":{"database_path":" "}}',
+                        '{"storage":{"database_path":3}}',
+                        '{"storage":{"database_path":"A","database_path":"B"}}'):
+            config.write_text(invalid, encoding='utf-8')
+            before = config.read_bytes()
+            with self.assertRaises(ValueError):
+                geographic_database_path(config)
+            self.assertEqual(config.read_bytes(), before)
+        config.write_bytes(b'\xff')
+        with self.assertRaises(UnicodeDecodeError):
+            geographic_database_path(config)
+        config.write_text(json.dumps({'storage': {'database_path': 'literal # Ω %.db'}}), encoding='utf-8')
+        self.assertEqual(geographic_database_path(config), 'literal # Ω %.db')
+        config.unlink()
+        config.mkdir()
+        with self.assertRaises(OSError):
+            geographic_database_path(config)
 
     def test_all_sixteen_legacy_partial_layouts_keep_null_confidence_without_migration(self):
         for index, fields in enumerate(fields for size in range(4)

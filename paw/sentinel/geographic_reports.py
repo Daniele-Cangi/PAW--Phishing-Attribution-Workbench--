@@ -9,6 +9,36 @@ from typing import Any, Dict, List, Optional
 import uuid
 
 
+def geographic_database_path(config_file='sentinel_config.json'):
+    """Default only on absent config; unreadable/invalid selection must fail."""
+    config = Path(config_file)
+    try:
+        config.lstat()
+    except FileNotFoundError:
+        return 'sentinel.db'
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('Duplicate key in geographic configuration: ' + key)
+            result[key] = value
+        return result
+
+    with config.open('r', encoding='utf-8') as source:
+        value = json.load(source, object_pairs_hook=unique_object)
+    storage = value.get('storage') if isinstance(value, dict) else None
+    database = storage.get('database_path') if isinstance(storage, dict) else None
+    if not isinstance(database, str) or not database.strip():
+        raise ValueError('Geographic configuration requires a nonblank storage.database_path')
+    return database
+
+
+def _html_text(value):
+    # Preserve valid Unicode and display lone surrogates as literal escapes.
+    return escape(value.encode('utf-8', errors='backslashreplace').decode('utf-8'))
+
+
 def validate_geographic_options(case_id=None, min_confidence=0.0, exclude_countries=None,
                                 output_format='both'):
     if case_id is not None and not isinstance(case_id, str):
@@ -145,13 +175,13 @@ class GeographicReporter:
     def _generate_html_report(report):
         """Escaped passive text; no executable markup, scripts or remote assets."""
         case = 'All cases' if report['case_id'] is None else report['case_id']
-        rows = ''.join('<tr><td>' + escape(country) + '</td><td>' + str(count) + '</td></tr>'
+        rows = ''.join('<tr><td>' + _html_text(country) + '</td><td>' + str(count) + '</td></tr>'
                        for country, count in report['geographic_stats']['countries'].items())
         source = escape(json.dumps(report, ensure_ascii=True, indent=2, allow_nan=False))
         return ('<!doctype html><html><head><meta charset="utf-8">'
             '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; base-uri \'none\'; form-action \'none\'">'
             '<title>Stored geographic observations</title></head><body>'
-            '<h1>Stored geographic observations</h1><p>Case: ' + escape(case) + '</p>'
+            '<h1>Stored geographic observations</h1><p>Case: ' + _html_text(case) + '</p>'
             '<p>Unverified stored claims. Identity and risk assessment unavailable. Interactive maps unavailable.</p>'
             '<p>Selected rows: ' + str(report['total_records']) + '; rows with included geographic observations: '
             + str(report['total_victims']) + '</p><table><thead><tr><th>Stored country</th><th>Rows</th></tr></thead>'
@@ -181,10 +211,9 @@ class GeographicReporter:
 
 def generate_geographic_report_cli(case_id=None, min_confidence=0.0, output_format='both',
                                    exclude_countries=None):
-    from .config import SentinelConfig
     from .database import CampaignDatabase
     validate_geographic_options(case_id, min_confidence, exclude_countries, output_format)
-    database = CampaignDatabase(SentinelConfig().get('storage.database_path'), read_only=True)
+    database = CampaignDatabase(geographic_database_path(), read_only=True)
     report = GeographicReporter(database).generate_geographic_report(case_id, min_confidence,
         exclude_countries, output_format=output_format)
     print(f"Stored selected rows: {report['total_records']}; geographic observations: {report['total_victims']}")

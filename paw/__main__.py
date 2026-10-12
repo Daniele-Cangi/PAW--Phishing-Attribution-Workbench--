@@ -495,12 +495,11 @@ For help: paw help <command>
 
         elif args.cmd in ["geographic", "geo"]:
             from .sentinel.intelligence_analyzer import IntelligenceAnalyzer
-            from .sentinel.config import SentinelConfig
-            from .sentinel.geographic_reports import validate_geographic_options
+            from .sentinel.geographic_reports import geographic_database_path, validate_geographic_options
             validate_geographic_options(args.case, args.min_confidence, output_format=args.output)
             if args.action == "map":
                 raise RuntimeError('Interactive maps are unavailable; geographic report preserves stored coordinates')
-            analyzer = IntelligenceAnalyzer(SentinelConfig().get('storage.database_path'), read_only=True)
+            analyzer = IntelligenceAnalyzer(geographic_database_path(), read_only=True)
             if args.action == "report":
                 report = analyzer.generate_geographic_report(args.case, args.min_confidence,
                                                             output_format=args.output)

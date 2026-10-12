@@ -19,8 +19,11 @@ def snapshot(root):
             for p in root.rglob('*')}
 
 
-def invoke(work, arguments, api=False, database=None):
-    if api:
+def invoke(work, arguments, api=False, database=None, helper=False):
+    if helper:
+        dispatch = 'from paw.sentinel.geographic_reports import generate_geographic_report_cli\ngenerate_geographic_report_cli()'
+        bootstrap = ''
+    elif api:
         dispatch = "from paw.sentinel.intelligence_analyzer import IntelligenceAnalyzer\n" \
             + "report = IntelligenceAnalyzer(%r, read_only=True).generate_geographic_report(output_format='json')\n" % str(database) \
             + "print('Selected stored rows: ' + str(report['total_records']))"
@@ -74,13 +77,18 @@ def main():
         ('unsupported-native', ['geographic', 'report'], None, None, None),
         ('output-blocked', ['geographic', 'report'], None, None, None),
         ('map', ['geo', 'map'], None, None, None),
+        ('unreadable-config', ['geographic', 'report'], None, None, None),
+        ('unreadable-config-stats', ['geo', 'stats'], None, None, None),
+        ('unreadable-config-helper', [], None, None, None),
+        ('absent-config', ['geographic', 'report', '--output', 'json'], None, {'.json'}, 213),
+        ('surrogate-html', ['geographic', 'report', '--output', 'html'], None, {'.html'}, 213),
         ('cold-api', [], None, {'.json'}, 213)]
     with tempfile.TemporaryDirectory(prefix='paw-geographic-cli-') as temporary:
         root = Path(temporary)
         for name, arguments, case, suffixes, total in scenarios:
             work = root / name
             work.mkdir()
-            database = work / 'stored # Ω %.db'
+            database = work / ('sentinel.db' if name.startswith('unreadable-config') or name == 'absent-config' else 'stored # Ω %.db')
             (work / 'sentinel_config.json').write_text(json.dumps(
                 {'storage': {'database_path': database.name}}), encoding='utf-8')
             source = []
@@ -97,7 +105,8 @@ def main():
                     cases = ['older'] * 105 + ['', None, hostile] + ['newer'] * 105
                     with writer.connection() as conn:
                         for index, stored_case in enumerate(cases):
-                            country = '<img src="https://example.invalid/pixel">' if stored_case == hostile else 'Stored'
+                            country = ('stored\ud800<\udfff> Ω 😀' if name == 'surrogate-html' else
+                                '<img src="https://example.invalid/pixel">' if stored_case == hostile else 'Stored')
                             conn.execute('INSERT INTO victim_intelligence (victim_ip, click_time, phishing_url, '
                                 'case_id, interaction_confidence, interaction_type, geolocation_data) '
                                 'VALUES (?,?,?,?,?,?,?)', ('192.0.2.1', f'{index:04}', 'https://example.invalid/',
@@ -125,8 +134,14 @@ def main():
             if name == 'missing-configured':
                 (work / 'sentinel_config.json').write_text(json.dumps(
                     {'storage': {'database_path': 'absent/source.db'}}), encoding='utf-8')
+            if name.startswith('unreadable-config') or name == 'absent-config':
+                config = work / 'sentinel_config.json'
+                config.unlink()
+                if name != 'absent-config':
+                    config.mkdir()  # Actual cross-platform OSError, beside a valid fallback database.
             before = snapshot(work)
-            code, text = invoke(work, arguments, api=name == 'cold-api', database=database)
+            code, text = invoke(work, arguments, api=name == 'cold-api', database=database,
+                                helper=name == 'unreadable-config-helper')
             if total is None:
                 assert code != 0 and 'Selected stored rows:' not in text, text
                 assert snapshot(work) == before, name
@@ -159,6 +174,8 @@ def main():
                             assert 'Content-Security-Policy' in output
                             if name == 'hostile-html':
                                 assert '&lt;img' in output and '&lt;script' in output
+                            if name == 'surrogate-html':
+                                assert 'stored\\ud800&lt;\\udfff&gt; Ω 😀' in output
             checks.append({'case': name, 'exit_code': code, 'source_tree_unchanged': True,
                            'selected_records': total})
     print(json.dumps({'status': 'passed', 'checks': checks,
