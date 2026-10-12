@@ -566,54 +566,14 @@ class IntelligenceAnalyzer:
             'indicators': indicators
         }
 
-    def generate_geographic_report(self, case_id: str = None, min_confidence: float = 0.0) -> Dict[str, Any]:
-        """Generate geographic report for analyzed victims."""
-        try:
-            from .geographic_reports import GeographicReporter
-            reporter = GeographicReporter(self.db)
-            return reporter.generate_geographic_report(case_id, min_confidence)
-        except Exception as e:
-            return {
-                'status': 'error',
-                'message': f'Errore generazione report geografico: {e}',
-                'case_id': case_id
-            }
+    def generate_geographic_report(self, case_id: str = None, min_confidence: float = 0.0, *,
+                                   output_format: str = 'both') -> Dict[str, Any]:
+        """Write selected stored observations; failures do not become no-data reports."""
+        from .geographic_reports import GeographicReporter
+        return GeographicReporter(self.db).generate_geographic_report(case_id, min_confidence,
+                                                                      output_format=output_format)
 
     def get_geographic_statistics(self, case_id: str = None, min_confidence: float = 0.0) -> Dict[str, Any]:
-        """Get geographic statistics without generating full report."""
-        try:
-            victims = self.db.get_victim_intelligence()
-            if case_id:
-                victims = [v for v in victims if v.get('case_id') == case_id]
-
-            # Filter by confidence and geolocation
-            filtered_victims = []
-            for victim in victims:
-                confidence = victim.get('interaction_confidence', 0.0)
-                if confidence >= min_confidence and victim.get('geolocation_data'):
-                    filtered_victims.append(victim)
-
-            if not filtered_victims:
-                return {'total_victims': 0, 'countries': {}, 'attackers': 0, 'attacker_percentage': 0.0}
-
-            # Basic statistics
-            countries = {}
-            attackers = 0
-
-            for victim in filtered_victims:
-                geo = victim.get('geolocation_data', {})
-                country = geo.get('country', 'Unknown')
-                countries[country] = countries.get(country, 0) + 1
-
-                if victim.get('interaction_type') in ['attacker', 'suspicious']:
-                    attackers += 1
-
-            return {
-                'total_victims': len(filtered_victims),
-                'countries': countries,
-                'attackers': attackers,
-                'attacker_percentage': (attackers / len(filtered_victims)) * 100 if filtered_victims else 0
-            }
-
-        except Exception as e:
-            return {'error': str(e)}
+        """Same stored selection and interpretation as the report, without saving."""
+        from .geographic_reports import GeographicReporter
+        return GeographicReporter(self.db).get_statistics(case_id, min_confidence)

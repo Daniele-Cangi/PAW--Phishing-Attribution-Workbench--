@@ -270,10 +270,10 @@ For help: paw help <command>
         p_monitor.add_argument("--campaign", help="Campaign ID (for check action)")
 
         # GEOGRAPHIC command (Sentinel Intelligence)
-        p_geo = sub.add_parser("geographic", aliases=["geo"], help="Generate geographic intelligence reports")
+        p_geo = sub.add_parser("geographic", aliases=["geo"], help="Describe unverified stored geographic observations")
         p_geo.add_argument("action", choices=["report", "stats", "map"], help="Geographic action")
         p_geo.add_argument("--case", help="Case ID to analyze (optional)")
-        p_geo.add_argument("--min-confidence", type=float, default=0.0, help="Minimum confidence threshold (0.0-1.0)")
+        p_geo.add_argument("--min-confidence", type=float, default=0.0, help="Stored confidence threshold (0 disables filtering; otherwise 0.0-1.0)")
         p_geo.add_argument("--output", choices=["html", "json", "both"], default="both", help="Output format")
 
         for analysis_parser in (p_analyze, p_quick, p_full, p_forensic, p_trace):
@@ -495,48 +495,25 @@ For help: paw help <command>
 
         elif args.cmd in ["geographic", "geo"]:
             from .sentinel.intelligence_analyzer import IntelligenceAnalyzer
-
-            analyzer = IntelligenceAnalyzer(use_proxy=True)
-
+            from .sentinel.config import SentinelConfig
+            from .sentinel.geographic_reports import validate_geographic_options
+            validate_geographic_options(args.case, args.min_confidence, output_format=args.output)
+            if args.action == "map":
+                raise RuntimeError('Interactive maps are unavailable; geographic report preserves stored coordinates')
+            analyzer = IntelligenceAnalyzer(SentinelConfig().get('storage.database_path'), read_only=True)
             if args.action == "report":
-                print(f"🗺️  Generando report geografico per case: {args.case or 'TUTTI'}")
-                print(f"📊 Confidenza minima: {args.min_confidence}")
-
-                report = analyzer.generate_geographic_report(args.case, args.min_confidence)
-
-                if report['status'] == 'success':
-                    print("✅ Report generato con successo!")
-                    print(f"📊 Vittime analizzate: {report['total_victims']}")
-                    print(f"🌍 Paesi coinvolti: {report['summary']['total_countries']}")
-                    print(f"🚨 Livello rischio: {report['summary']['risk_assessment']['level']}")
-
-                    if report['summary']['attacker_countries']:
-                        print(f"🎯 Attaccanti da: {', '.join(report['summary']['attacker_countries'][:3])}")
-
-                    print(f"\n📁 File generati nella directory reports/geographic/")
-
-                else:
-                    print(f"❌ Errore generazione report: {report.get('message', 'Errore sconosciuto')}")
-
-            elif args.action == "stats":
-                print(f"📊 Statistiche geografiche per case: {args.case or 'TUTTI'}")
-
-                stats = analyzer.get_geographic_statistics(args.case, args.min_confidence)
-
-                if 'error' not in stats:
-                    print(f"📊 Vittime totali: {stats['total_victims']}")
-                    print(f"🚨 Attaccanti identificati: {stats['attackers']} ({stats['attacker_percentage']:.1f}%)")
-
-                    if stats['countries']:
-                        print("🌍 Distribuzione per paese:")
-                        for country, count in sorted(stats['countries'].items(), key=lambda x: x[1], reverse=True)[:5]:
-                            print(f"  • {country}: {count}")
-                else:
-                    print(f"❌ Errore: {stats['error']}")
-
-            elif args.action == "map":
-                print("🗺️  Funzione mappa non ancora implementata")
-                print("💡 Usa 'paw geographic report' per generare mappe interattive")
+                report = analyzer.generate_geographic_report(args.case, args.min_confidence,
+                                                            output_format=args.output)
+            else:
+                report = analyzer.get_geographic_statistics(args.case, args.min_confidence)
+            print(f"Selected stored rows: {report['total_records']}")
+            print(f"Rows with included geographic observations: {report['total_victims']}")
+            print(f"Stored countries: {report['geographic_stats']['total_countries']}")
+            print('Stored claims unverified; identity/risk/interactive maps unavailable')
+            for country, count in report['geographic_stats']['countries'].items():
+                print(f"  {json.dumps(country, ensure_ascii=True)}: {count}")
+            for filename in report.get('output_files', []):
+                print(f'Written: {filename}')
 
         else:
             parser.print_help()
@@ -725,19 +702,19 @@ EXAMPLES:
         "geographic": """
 🐾 PAW GEOGRAPHIC - Intelligence Geographic Reports
 
-Generate geographic intelligence reports showing attacker locations and victim distributions.
+Describe stored geographic claims without inferring attacker/victim identities or risk.
 
 USAGE:
   paw geographic <action> [options]
 
 ACTIONS:
-  report              Generate full geographic report with maps and statistics
-  stats               Show geographic statistics summary
-  map                 Generate interactive map (future feature)
+  report              Save passive JSON/HTML geographic observations and original sources
+  stats               Describe the same stored selection without writing output files
+  map                 Explicitly unavailable; no database or output initialization
 
 OPTIONS:
   --case CASE         Case ID to analyze (optional, analyzes all if not specified)
-  --min-confidence F  Minimum confidence threshold (0.0-1.0, default: 0.0)
+  --min-confidence F  Stored confidence threshold (0 disables filtering; otherwise 0-1)
   --output FORMAT     Output format: html, json, both (default: both)
 
 EXAMPLES:

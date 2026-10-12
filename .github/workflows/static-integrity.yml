@@ -257,6 +257,12 @@ jobs:
       - name: Verify actual passive intelligence JSON in fresh processes
         run: python tests/integration_sentinel_intelligence_real.py
 
+      - name: Verify complete stored geographic sources and passive report outputs
+        run: python -m unittest discover -s tests -p 'test_sentinel_geographic_report.py' -v
+
+      - name: Verify actual geographic CLI and cold API admission without collection
+        run: python tests/integration_sentinel_geographic_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5
