@@ -7,21 +7,24 @@ import time
 import hashlib
 import json
 from datetime import datetime
-from typing import Dict, List, Set, Optional, Tuple, Any
+from typing import Dict, List, Set, Optional, Tuple, Any, TYPE_CHECKING
 from pathlib import Path
 
-from .database import CampaignDatabase
+if TYPE_CHECKING:
+    from .database import CampaignDatabase
 from ..util.fsutil import ensure_dir
 from ..util.timeutil import utc_now_iso
 from ..core.verify import verify_case
+from ..core.job_registry import require_stopped_case
 
 
 class FileMonitor:
     """Monitor file integrity and changes in PAW case directories."""
 
-    def __init__(self, cases_dir: str = "cases", database: CampaignDatabase = None):
+    def __init__(self, cases_dir: str = "cases", database: "CampaignDatabase" = None):
         self.cases_dir = Path(cases_dir)
-        self.db = database or CampaignDatabase()
+        # File checks do not read or write the campaign database.
+        self.db = database
         self._baseline_hashes: Dict[str, str] = {}
         self._monitored_files: Set[str] = set()
 
@@ -40,6 +43,7 @@ class FileMonitor:
     def get_case_files(self, case_id: str) -> List[str]:
         """Get all analysis files for a specific case."""
         case_path = self.cases_dir / case_id
+        require_stopped_case(case_path)
         if not case_path.exists():
             return []
 
@@ -68,6 +72,7 @@ class FileMonitor:
     def verify_merkle_integrity(self, case_id: str) -> Tuple[Optional[bool], str]:
         """Verify file integrity using Merkle root if available."""
         case_path = self.cases_dir / case_id
+        require_stopped_case(case_path)
         evidence_dir = case_path / "evidence"
         merkle_index = evidence_dir / "merkle_index.json"
         merkle_root_file = evidence_dir / "merkle_root.bin"
@@ -141,16 +146,16 @@ class FileMonitor:
     def monitor_all_cases(self) -> List[Dict[str, Any]]:
         """Monitor all case directories for changes."""
         case_ids = self.scan_cases_directory()
+        # Admit the entire selection before advancing any in-memory baseline.
+        for case_id in case_ids:
+            require_stopped_case(self.cases_dir / case_id)
         results = []
 
         for case_id in case_ids:
-            try:
-                changes = self.check_file_changes(case_id)
-                if changes['new_files'] or changes['modified_files'] or changes['deleted_files'] or changes['integrity_status'] != 'ok':
-                    results.append(changes)
-                    self._record_file_check(case_id, changes)
-            except Exception as e:
-                print(f"[file_monitor] Error checking case {case_id}: {e}")
+            changes = self.check_file_changes(case_id)
+            if changes['new_files'] or changes['modified_files'] or changes['deleted_files'] or changes['integrity_status'] != 'ok':
+                results.append(changes)
+                self._record_file_check(case_id, changes)
 
         return results
 
@@ -169,6 +174,8 @@ class FileMonitor:
     def generate_integrity_report(self) -> Dict[str, Any]:
         """Generate a comprehensive integrity report for all cases."""
         case_ids = self.scan_cases_directory()
+        for case_id in case_ids:
+            require_stopped_case(self.cases_dir / case_id)
         report = {
             'timestamp': utc_now_iso(),
             'total_cases': len(case_ids),

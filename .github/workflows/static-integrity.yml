@@ -278,6 +278,12 @@ jobs:
       - name: Verify actual unavailable Sentinel CLI lifecycle before source access
         run: python tests/integration_sentinel_lifecycle_real.py
 
+      - name: Verify local Sentinel file-reader ownership admission
+        run: python -m unittest discover -s tests -p 'test_sentinel_local_files.py' -v
+
+      - name: Verify actual local-file CLI checks preserve unrelated Sentinel sources
+        run: python tests/integration_sentinel_local_files_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5
