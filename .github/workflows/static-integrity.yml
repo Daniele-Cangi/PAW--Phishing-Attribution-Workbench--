@@ -269,6 +269,12 @@ jobs:
       - name: Verify actual cold passive interaction API and saved JSON sources
         run: python tests/integration_sentinel_interaction_real.py
 
+      - name: Verify typed stored filters and unavailable recency/correlation
+        run: python -m unittest discover -s tests -p 'test_sentinel_stored_filters.py' -v
+
+      - name: Verify actual cold stored filter/statistics APIs and source preservation
+        run: python tests/integration_sentinel_stored_filters_real.py
+
   archive-runtime-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

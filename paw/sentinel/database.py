@@ -522,42 +522,44 @@ class CampaignDatabase:
 
             return [self._victim_row_to_dict(row) for row in rows]
 
+    @staticmethod
+    def _finite_stored_number(value):
+        return (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and (isinstance(value, int) or math.isfinite(value)))
+
     def get_victim_statistics(self) -> Dict[str, Any]:
-        """Get statistics about victim intelligence data."""
-        with self.connection() as conn:
-            # Total victims
-            total_victims = conn.execute("""
-                SELECT COUNT(*) FROM victim_intelligence
-            """).fetchone()[0]
-
-            # Status breakdown
-            status_stats = conn.execute("""
-                SELECT analyzed_status, COUNT(*) as count
-                FROM victim_intelligence
-                GROUP BY analyzed_status
-            """).fetchall()
-
-            # Risk score distribution
-            risk_stats = conn.execute("""
-                SELECT risk_score, COUNT(*) as count
-                FROM victim_intelligence
-                WHERE risk_score > 0
-                GROUP BY risk_score
-                ORDER BY risk_score
-            """).fetchall()
-
-            # Recent activity (last 24 hours)
-            recent_victims = conn.execute("""
-                SELECT COUNT(*) FROM victim_intelligence
-                WHERE click_time > datetime('now', '-1 day')
-            """).fetchone()[0]
-
-            return {
-                'total_victims': total_victims,
-                'status_breakdown': dict(status_stats),
-                'risk_distribution': dict(risk_stats),
-                'recent_victims_24h': recent_victims
-            }
+        """Complete stored-row descriptions, without inferred risk or recency."""
+        records = self.get_forensic_victim_intelligence()
+        json.dumps(records, allow_nan=False)
+        status_ids, risk_ids, unusable_statuses, unusable_scores, nonpositive = {}, {}, [], [], []
+        for record in records:
+            identifier, status, score = record['id'], record['analyzed_status'], record['risk_score']
+            if isinstance(status, str):
+                status_ids.setdefault(status, []).append(identifier)
+            else:
+                unusable_statuses.append(identifier)
+            if not self._finite_stored_number(score):
+                unusable_scores.append(identifier)
+            elif score > 0:
+                risk_ids.setdefault(str(score), []).append(identifier)
+            else:
+                nonpositive.append(identifier)
+        return {
+            'schema_version': 1, 'status': 'success', 'evidence_scope': 'stored_rows_unverified',
+            'source_records': records, 'total_victims': len(records),
+            'status_breakdown': {key: len(ids) for key, ids in status_ids.items()},
+            'risk_distribution': {key: len(ids) for key, ids in risk_ids.items()},
+            'aggregation_evidence': {
+                'status_breakdown': {'source_field': 'analyzed_status',
+                    'source_ids': status_ids, 'unusable_ids': unusable_statuses},
+                'risk_distribution': {'source_field': 'risk_score', 'source_ids': risk_ids,
+                    'unusable_ids': unusable_scores, 'nonpositive_ids': nonpositive,
+                    'scope': 'Finite positive stored numbers, not calibrated risk.'}},
+            'recent_victims_24h': None,
+            'unavailable': {'recent_victims_24h': 'No validated timestamp interpretation is defined; original click_time retained.',
+                'risk_assessment': 'Stored scores are not calibrated risk.',
+                'identity': 'Stored IPs and labels do not identify victims or attackers.'},
+            'count_scope': 'Stored rows/status labels/positive scores, not unique people or authenticated events.'}
 
     def update_victim_analysis(self, victim_id: int, geolocation_data: Dict = None,
                               whois_data: Dict = None, attacker_correlation: Dict = None,
@@ -647,58 +649,31 @@ class CampaignDatabase:
         return min(max(score, 1), 10)
 
     def get_victims_by_risk_score(self, min_score: int = 5) -> List[Dict[str, Any]]:
-        """Get victims with risk score above threshold."""
-        with self._json_read_connection() as conn:
-            rows = conn.execute("""
-                SELECT * FROM victim_intelligence
-                WHERE risk_score >= ?
-                ORDER BY risk_score DESC, click_time DESC
-            """, (min_score,)).fetchall()
-
-            return [self._victim_row_to_dict(row) for row in rows]
+        """Legacy name: select finite stored numbers, not risk conclusions."""
+        if not self._finite_stored_number(min_score):
+            raise ValueError('min_score must be a finite non-boolean number')
+        records = self.get_forensic_victim_intelligence()
+        matches = [record for record in records if self._finite_stored_number(record['risk_score'])
+                   and record['risk_score'] >= min_score]
+        # Stable score ties retain complete-reader click_time DESC, id DESC order.
+        return sorted(matches, key=lambda record: record['risk_score'], reverse=True)
 
     def get_victims_by_country(self, country: str) -> List[Dict[str, Any]]:
-        """Get victims from specific country."""
-        with self._json_read_connection() as conn:
-            rows = conn.execute("""
-                SELECT * FROM victim_intelligence
-                WHERE json_extract(geolocation_data, '$.country') = ?
-                ORDER BY click_time DESC
-            """, (country,)).fetchall()
-
-            return [self._victim_row_to_dict(row) for row in rows]
+        """Select exact unambiguous decoded country strings; retain matched sources."""
+        if not isinstance(country, str) or not country.strip():
+            raise ValueError('country must be a nonblank string')
+        records = self.get_forensic_victim_intelligence()
+        return [record for record in records
+                if record['json_evidence']['fields']['geolocation_data']['status'] == 'decoded'
+                and isinstance(record['geolocation_data'], dict)
+                and isinstance(record['geolocation_data'].get('country'), str)
+                and record['geolocation_data']['country'] == country]
 
     def get_attacker_correlations(self) -> List[Dict[str, Any]]:
-        """Get potential attacker infrastructure correlations."""
-        with self.connection() as conn:
-            # Find networks with multiple victims
-            rows = conn.execute("""
-                SELECT
-                    substr(victim_ip, 1, instr(victim_ip, '.') + instr(substr(victim_ip, instr(victim_ip, '.') + 1), '.') + instr(substr(victim_ip, instr(victim_ip, '.') + instr(substr(victim_ip, instr(victim_ip, '.') + 1), '.') + 1), '.') - 1) as network,
-                    COUNT(*) as victim_count,
-                    GROUP_CONCAT(victim_ip) as victim_ips,
-                    GROUP_CONCAT(DISTINCT json_extract(geolocation_data, '$.country')) as countries,
-                    AVG(risk_score) as avg_risk
-                FROM victim_intelligence
-                WHERE analyzed_status = 'analyzed'
-                GROUP BY network
-                HAVING victim_count >= 3
-                ORDER BY victim_count DESC, avg_risk DESC
-            """).fetchall()
-
-            correlations = []
-            for row in rows:
-                network, victim_count, victim_ips, countries, avg_risk = row
-                correlations.append({
-                    'network': network,
-                    'victim_count': victim_count,
-                    'victim_ips': victim_ips.split(','),
-                    'countries': countries.split(',') if countries else [],
-                    'avg_risk_score': round(avg_risk, 1) if avg_risk else 0,
-                    'potential_attacker_infrastructure': victim_count >= 5
-                })
-
-            return correlations
+        """Unsupported interpretation; never replace unavailability with empty success."""
+        raise RuntimeError('Attacker correlations are unavailable: stored IP/location/score claims '
+                           'do not establish attacker infrastructure. '
+                           'Use get_forensic_victim_intelligence for complete stored sources.')
 
     def _victim_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Decode known fields by name, independent of migration column order."""
