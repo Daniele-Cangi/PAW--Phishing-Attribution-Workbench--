@@ -11,6 +11,13 @@ database relative to the current working directory and prints the existing
 dependencies are required. The script does not change the working directory,
 initialize/migrate storage, import a network collector or run analysis.
 
+Only an absent `sentinel_config.json` selects the default `sentinel.db`. A present
+configuration is read once with errors propagated; it must be a JSON object with
+a nonblank string `storage.database_path`. Unreadable files/directories, invalid
+UTF-8/JSON, duplicate keys, NULL or missing/invalid storage selection fail rather
+than silently reading an unrelated valid default database. This script-local
+selection leaves the shared `SentinelConfig` compatibility behavior unchanged.
+
 Previously the script changed into a personal Windows directory at import time,
 constructed the default writable database, read a latest-100 preview and printed
 its length as a total. It looked up nonexistent `ip_address`, `user_agent` and
@@ -33,8 +40,8 @@ to stored rows, not people or authenticated visits; identity, calibrated risk an
 recent-event interpretation are unavailable. Stored timestamps remain unverified
 source strings, user agents are retained completely and absent values remain NULL.
 
-`tests/integration_legacy_interaction_check_real.py` executes 18 actual processes:
-17 cold diagnostic/argument/import paths under the Python no-egress guard and one
+`tests/integration_legacy_interaction_check_real.py` executes 22 actual processes:
+21 cold diagnostic/argument/import paths under the Python no-egress guard and one
 direct script execution outside the checkout without host `PYTHONPATH`. Actual
 saved/default/configured/empty/legacy and error sources remain byte for byte
 unchanged. Two 210-row fixtures verify complete source ordering beyond the old
@@ -43,6 +50,10 @@ TEXT provenance. JSON output equals the existing full statistics API report.
 Malformed native scalars fail without stdout data. Help/invalid options/import
 preserve a malformed configuration without importing Sentinel. No CLI bootstrap,
 collector imports, new threads or blocked operations occur in guarded processes.
+The directory/empty-object/NULL/duplicate-path configuration regressions keep a
+valid unrelated default database alongside the failing selection. A separate
+explicit read-denial injection checks error propagation with real SQLite and
+unchanged source bytes; it is not a Windows/POSIX ACL enforcement proof.
 
 This dispositions one S12 script. Package readers/writers and the report schema
 are unchanged. Existing complete-reader resource limits, concurrent-writer

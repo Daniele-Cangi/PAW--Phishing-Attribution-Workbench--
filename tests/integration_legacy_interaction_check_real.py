@@ -14,15 +14,25 @@ from test_sentinel_database_rows import LEGACY_FIELDS
 SCRIPT = REPO / 'check_victims.py'
 
 
-def invoke(root, arguments=(), *, import_only=False):
+def invoke(root, arguments=(), *, import_only=False, deny_config_read=False):
     # This diagnostic does not bootstrap the CLI or optional network libraries.
-    code = """import os,runpy,sys,threading
+    code = """import builtins,io,os,runpy,sys,threading
 sys.path.insert(0,%r)
 from paw.core.network_policy import offline_policy,violations
 sys.argv=[%r]+%r
 before=list(sys.argv)
 cwd=os.getcwd()
 threads=set(threading.enumerate())
+if %r:
+    # Explicit read-failure injection; source bytes and SQLite remain real.
+    def denied_open(original):
+        def opening(path,*args,**kwargs):
+            if isinstance(path,(str,os.PathLike)) and os.path.abspath(path)==os.path.join(cwd,'sentinel_config.json'):
+                raise PermissionError('Explicit configuration read-denial regression fixture')
+            return original(path,*args,**kwargs)
+        return opening
+    builtins.open=denied_open(builtins.open)
+    io.open=denied_open(io.open)
 try:
     with offline_policy():
         runpy.run_path(%r,run_name=%r)
@@ -37,7 +47,7 @@ finally:
         assert sys.argv==before,'Import changed arguments'
         assert 'paw.sentinel' not in sys.modules,'Argument/import path accessed Sentinel'
     print('LEGACY_INTERACTIONS_PASSIVE_OK',file=sys.stderr)
-""" % (str(REPO), str(SCRIPT), list(arguments), str(SCRIPT),
+""" % (str(REPO), str(SCRIPT), list(arguments), deny_config_read, str(SCRIPT),
            'legacy_import' if import_only else '__main__', import_only or bool(arguments))
     env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1',PYTHONUTF8='1')
     env.pop('PYTHONPATH',None)
@@ -61,7 +71,8 @@ def main():
             if mode not in ('saved-default','missing-default'):
                 database=work/'stored # Ω %.db'
                 config.write_text(json.dumps({'storage':{'database_path':database.name}}),encoding='utf-8')
-                (work/'sentinel.db').write_bytes(b'unrelated default storage; must not open')
+                if mode!='config-directory':
+                    (work/'sentinel.db').write_bytes(b'unrelated default storage; must not open')
             if mode=='configured-missing':
                 config.write_text(json.dumps({'storage':{'database_path':'absent/target.db'}}),encoding='utf-8')
             elif mode=='corrupt':
@@ -75,6 +86,10 @@ def main():
                 config.unlink()
                 config.mkdir()
                 (config/'original.txt').write_bytes(b'original source')
+                # A valid unrelated fallback must not mask configuration failure.
+                fallback=CampaignDatabase(str(work/'sentinel.db'))
+                fallback.add_victim_intelligence('192.0.2.2','Unrelated fallback row',
+                                                'https://example.invalid/fallback')
             elif mode=='legacy':
                 with closing(sqlite3.connect(database)) as conn,conn:
                     conn.execute('CREATE TABLE victim_intelligence ('+', '.join(k+' '+sql for k,sql in LEGACY_FIELDS)+')')
@@ -134,6 +149,24 @@ def main():
                     stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
                 assert direct.returncode==0 and json.loads(direct.stdout)==report,direct.stderr
                 assert snapshot(work)==before
+        for mode,config_text in (
+                ('empty-object','{}'),('null','null'),
+                ('duplicate-path','{"storage":{"database_path":"missing.db","database_path":"sentinel.db"}}'),
+                ('denied-read','{"storage":{"database_path":"configured.db"}}')):
+            work=root/('config-'+mode)
+            work.mkdir()
+            (work/'sentinel_config.json').write_text(config_text,encoding='utf-8')
+            fallback=CampaignDatabase(str(work/'sentinel.db'))
+            fallback.add_victim_intelligence('192.0.2.2','Unrelated fallback row',
+                                            'https://example.invalid/fallback')
+            before=snapshot(work)
+            exit_code,output,error=invoke(work,deny_config_read=mode=='denied-read')
+            assert exit_code==1 and output=='' and 'error:' in error,(mode,exit_code,output,error)
+            if mode=='denied-read':
+                assert 'read-denial regression fixture' in error,error
+            assert snapshot(work)==before,mode
+            checks.append({'mode':'config-'+mode,'explicit_error_without_report':True,
+                           'valid_unrelated_default_not_reported':True,'sources_preserved':True})
         work=root/'arguments-and-import'
         work.mkdir()
         (work/'sentinel_config.json').write_bytes(b'{must not access')
@@ -144,8 +177,8 @@ def main():
             assert snapshot(work)==before
         exit_code,output,error=invoke(work,import_only=True)
         assert exit_code==0 and output=='' and snapshot(work)==before,error
-    print(json.dumps({'status':'passed','processes':18,'checks':checks,
-        'scope':'17 actual cold guarded diagnostic/import/argument processes, plus one direct saved-source execution outside checkout without PYTHONPATH. No collector/CLI bootstrap, new thread, blocked operation or source mutation in guarded processes. Not OS containment, live-writer snapshot, authentication or identity/accuracy evidence.'},indent=2))
+    print(json.dumps({'status':'passed','processes':22,'checks':checks,
+        'scope':'21 actual cold guarded diagnostic/import/argument processes, plus one direct saved-source execution outside checkout without PYTHONPATH. Configuration read denial is explicitly injected, not an OS ACL proof. No collector/CLI bootstrap, new thread, blocked operation or source mutation in guarded processes. Not OS containment, live-writer snapshot, authentication or identity/accuracy evidence.'},indent=2))
 
 
 if __name__=='__main__':
