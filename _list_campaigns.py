@@ -1,7 +1,13 @@
-import sqlite3
-conn = sqlite3.connect('sentinel.db')
-rows = conn.execute('SELECT case_id, url FROM campaigns WHERE status = "active"').fetchall()
-print("ACTIVE CAMPAIGNS:")
-for r in rows:
-    print(f"  {r[0]} - {r[1]}")
-conn.close()
+"""Legacy checkout alias for the passive `paw monitor list` command."""
+import sys
+
+
+def main():
+    from paw.__main__ import main as cli_main
+
+    sys.argv = ['paw', 'monitor', 'list', *sys.argv[1:]]
+    cli_main()
+
+
+if __name__ == '__main__':
+    main()
