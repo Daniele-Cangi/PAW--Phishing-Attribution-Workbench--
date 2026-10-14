@@ -1,27 +1,47 @@
 #!/usr/bin/env python3
-"""Check victims in Sentinel database"""
-import sys
-import os
-os.chdir(r'C:\Users\dacan\OneDrive\Desktop\SentinelV1_paw\PAW')
-sys.path.insert(0, '.')
+"""Legacy diagnostic for complete, unverified stored Sentinel interaction rows."""
+import argparse
+import json
+from pathlib import Path
 
-from paw.sentinel.database import CampaignDatabase
 
-db = CampaignDatabase()
-victims = db.get_victim_intelligence()
+def _database_path():
+    config = Path('sentinel_config.json')
+    try:
+        config.lstat()
+    except FileNotFoundError:
+        return 'sentinel.db'
 
-print(f"\n📊 Total victims in database: {len(victims)}\n")
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('Duplicate key in Sentinel configuration: ' + key)
+            result[key] = value
+        return result
 
-if victims:
-    print("Last 5 victims:")
-    for v in victims[-5:]:
-        ip = v.get('ip_address', 'N/A')
-        ua = v.get('user_agent', 'N/A')[:60]
-        ts = v.get('timestamp', 'N/A')
-        case = v.get('case_id', 'N/A')
-        print(f"  • Case: {case}")
-        print(f"    IP: {ip}")
-        print(f"    UA: {ua}...")
-        print(f"    Time: {ts}\n")
-else:
-    print("No victims recorded yet.")
+    with config.open('r', encoding='utf-8') as source:
+        value = json.load(source, object_pairs_hook=unique_object)
+    storage = value.get('storage') if isinstance(value, dict) else None
+    database = storage.get('database_path') if isinstance(storage, dict) else None
+    if not isinstance(database, str) or not database.strip():
+        raise ValueError('Sentinel configuration requires a nonblank storage.database_path')
+    return database
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args()
+    try:
+        from paw.sentinel import CampaignDatabase
+
+        database = CampaignDatabase(_database_path(), read_only=True)
+        report = database.get_victim_statistics()
+        output = json.dumps(report, indent=2, ensure_ascii=True, allow_nan=False)
+    except Exception as error:
+        parser.exit(1, f'error: {error}\n')
+    print(output)
+
+
+if __name__ == '__main__':
+    main()
